@@ -3,7 +3,6 @@ import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { organization } from "better-auth/plugins"
 import { phoneNumber } from "better-auth/plugins"
-import { twoFactor } from "better-auth/plugins"
 import { nextCookies } from "better-auth/next-js"
 import { Resend } from "resend"
 import { prisma } from "@/server/db"
@@ -120,16 +119,6 @@ export const auth = betterAuth({
             otpLength: 6,
             expiresIn: 300, // 5 minutes
         }),
-
-        // Two-Factor Authentication
-        twoFactor({
-            issuer: env.NEXT_PUBLIC_APP_NAME,
-            otpOptions: {
-                period: 30,
-                digits: 6,
-            },
-        }),
-
         // ⚠️ nextCookies DOIT être le DERNIER plugin
         nextCookies(),
     ],
