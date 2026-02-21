@@ -1,4 +1,3 @@
-// src/lib/env.ts
 import { z } from "zod"
 
 const envSchema = z.object({
@@ -11,6 +10,12 @@ const envSchema = z.object({
     GOOGLE_CLIENT_SECRET: z.string().min(1),
 
     RESEND_API_KEY: z.string().startsWith("re_"),
+    RESEND_FROM_EMAIL: z.string().email(),
+    RESEND_FROM_NAME: z.string().min(1),
+
+    TWILIO_ACCOUNT_SID: z.string().startsWith("AC").optional(),
+    TWILIO_AUTH_TOKEN: z.string().optional(),
+    TWILIO_PHONE_NUMBER: z.string().optional(),
 
     NEXT_PUBLIC_APP_URL: z.string().url(),
     NEXT_PUBLIC_APP_NAME: z.string().min(1),
