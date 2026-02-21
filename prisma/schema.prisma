@@ -7,6 +7,10 @@ datasource db {
   provider = "postgresql"
 }
 
+// ============================================================
+// AUTH — Better-Auth compatible
+// ============================================================
+
 enum UserRole {
   OWNER
   ADMIN
@@ -15,37 +19,79 @@ enum UserRole {
 }
 
 model User {
-  id           String  @id @default(uuid())
-  email        String  @unique
-  passwordHash String?
-  firstName    String?
-  lastName     String?
+  id          String  @id @default(uuid())
+  email       String  @unique
+  name        String?
+  phoneNumber String? @unique
+  password    String?
+  image       String?
 
-  emailVerified Boolean @default(false)
-  isActive      Boolean @default(true)
+  emailVerified       Boolean @default(false)
+  phoneNumberVerified Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
   sessions    Session[]
-  tokens      AuthToken[]
-  accounts    Account[] // OAuth providers
+  accounts    Account[]
+  memberships Membership[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Account {
-  id                String    @id @default(uuid())
-  userId            String
-  provider          String
-  providerAccountId String
-  accessToken       String?
-  refreshToken      String?
-  expiresAt         DateTime?
+  id         String @id @default(uuid())
+  accountId  String
+  providerId String
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
 }
+
+// Requis par Better-Auth pour OTP, email verification, reset password, etc.
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String // email ou phone
+  value      String // le token / code OTP
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ============================================================
+// ORGANISATION & MEMBERSHIP
+// ============================================================
 
 model Organization {
   id   String @id @default(uuid())
@@ -53,6 +99,14 @@ model Organization {
   slug String @unique
 
   defaultCurrency String @default("USD")
+
+  // Infos de facturation de l'org (affiché sur les factures/devis)
+  address String?
+  phone   String?
+  email   String?
+  website String?
+  taxId   String? // numéro de TVA / SIRET / etc.
+  logoUrl String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -65,6 +119,7 @@ model Organization {
   vendors      Vendor[]
   categories   ExpenseCategory[]
   products     Product[]
+  taxRates     TaxRate[]
   subscription Subscription?
 }
 
@@ -82,34 +137,12 @@ model Membership {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
+  @@index([organizationId])
 }
 
-model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-enum TokenType {
-  VERIFY_EMAIL
-  RESET_PASSWORD
-  INVITE_USER
-}
-
-model AuthToken {
-  id        String    @id @default(uuid())
-  userId    String
-  token     String    @unique
-  type      TokenType
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
+// ============================================================
+// PLANS & ABONNEMENTS
+// ============================================================
 
 enum PlanType {
   FREE
@@ -134,6 +167,7 @@ model Plan {
   maxInvoices Int?
   maxExpenses Int?
   maxUsers    Int?
+  maxProducts Int?
 
   createdAt DateTime @default(now())
 
@@ -149,6 +183,9 @@ model Subscription {
   currentPeriodEnd  DateTime
   cancelAtPeriodEnd Boolean            @default(false)
 
+  // ID externe (Stripe, etc.)
+  externalId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -156,11 +193,58 @@ model Subscription {
   plan         Plan         @relation(fields: [planId], references: [id])
 }
 
+// ============================================================
+// RÉFÉRENTIELS
+// ============================================================
+
 model Currency {
   code   String @id
   name   String
   symbol String
 }
+
+// Taux de TVA réutilisables par organisation
+model TaxRate {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name      String // ex: "TVA 20%", "TVA réduite 5.5%"
+  rate      Decimal @db.Decimal(5, 2) // ex: 20.00
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceItems InvoiceItem[]
+  quoteItems   QuoteItem[]
+
+  @@index([organizationId])
+}
+
+model Product {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name          String
+  description   String?
+  sku           String?
+  price         Decimal  @db.Decimal(18, 2)
+  isService     Boolean  @default(false)
+  stockQuantity Decimal? @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceItems InvoiceItem[]
+  quoteItems   QuoteItem[]
+
+  @@index([organizationId])
+}
+
+// ============================================================
+// CLIENTS & FOURNISSEURS
+// ============================================================
 
 enum ClientType {
   INDIVIDUAL
@@ -175,14 +259,42 @@ model Client {
   email   String?
   phone   String?
   address String?
+  city    String?
+  country String?
+  taxId   String? // TVA intracommunautaire, SIRET, etc.
   type    ClientType @default(INDIVIDUAL)
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
   quotes       Quote[]
+
+  @@index([organizationId])
 }
+
+model Vendor {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name    String
+  email   String?
+  phone   String?
+  address String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+
+  @@index([organizationId])
+}
+
+// ============================================================
+// FACTURES
+// ============================================================
 
 enum InvoiceStatus {
   DRAFT
@@ -211,7 +323,16 @@ model Invoice {
   currencyCode String
   exchangeRate Decimal? @db.Decimal(18, 6)
 
+  // Notes affichées sur la facture
+  notes         String?
+  // Conditions de paiement affichées sur la facture
+  terms         String?
+  // Notes internes, non visibles par le client
+  internalNotes String?
+
+  // Lien vers le devis d'origine si converti
   originQuoteId String?
+  originQuote   Quote?  @relation("QuoteToInvoice", fields: [originQuoteId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -220,6 +341,14 @@ model Invoice {
   client       Client?       @relation(fields: [clientId], references: [id])
   items        InvoiceItem[]
   payments     Payment[]
+
+  // Numéro unique par organisation
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+  @@index([organizationId, status])
+  @@index([dueDate])
 }
 
 model InvoiceItem {
@@ -228,15 +357,21 @@ model InvoiceItem {
 
   name        String
   description String?
-  quantity    Decimal  @db.Decimal(18, 2)
-  unitPrice   Decimal  @db.Decimal(18, 2)
-  taxRate     Decimal?
-  total       Decimal  @db.Decimal(18, 2)
-  isService   Boolean  @default(false)
+  quantity    Decimal @db.Decimal(18, 2)
+  unitPrice   Decimal @db.Decimal(18, 2)
+  total       Decimal @db.Decimal(18, 2)
+  isService   Boolean @default(false)
 
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  product   Product? @relation(fields: [productId], references: [id])
+  // Relation vers TaxRate pour réutilisabilité
+  taxRateId String?
+  taxRate   TaxRate? @relation(fields: [taxRateId], references: [id])
+
   productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 enum PaymentMethod {
@@ -244,6 +379,8 @@ enum PaymentMethod {
   BANK_TRANSFER
   MOBILE_MONEY
   CARD
+  CHECK
+  OTHER
 }
 
 model Payment {
@@ -253,11 +390,18 @@ model Payment {
   amount Decimal       @db.Decimal(18, 2)
   method PaymentMethod
   paidAt DateTime
+  note   String?
 
   createdAt DateTime @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
+
+// ============================================================
+// DEVIS
+// ============================================================
 
 enum QuoteStatus {
   DRAFT
@@ -285,11 +429,25 @@ model Quote {
   currencyCode String
   exchangeRate Decimal? @db.Decimal(18, 6)
 
+  notes         String?
+  terms         String?
+  internalNotes String?
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client?      @relation(fields: [clientId], references: [id])
   items        QuoteItem[]
+
+  // Factures générées depuis ce devis
+  invoices Invoice[] @relation("QuoteToInvoice")
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+  @@index([organizationId, status])
 }
 
 model QuoteItem {
@@ -298,27 +456,50 @@ model QuoteItem {
 
   name        String
   description String?
-  quantity    Decimal  @db.Decimal(18, 2)
-  unitPrice   Decimal  @db.Decimal(18, 2)
-  taxRate     Decimal?
-  total       Decimal  @db.Decimal(18, 2)
-  isService   Boolean  @default(false)
+  quantity    Decimal @db.Decimal(18, 2)
+  unitPrice   Decimal @db.Decimal(18, 2)
+  total       Decimal @db.Decimal(18, 2)
+  isService   Boolean @default(false)
 
-  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  product   Product? @relation(fields: [productId], references: [id])
+  taxRateId String?
+  taxRate   TaxRate? @relation(fields: [taxRateId], references: [id])
+
   productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+}
+
+// ============================================================
+// DÉPENSES
+// ============================================================
+
+model ExpenseCategory {
+  id             String  @id @default(uuid())
+  organizationId String
+  name           String
+  color          String? // pour l'UI / graphiques
+
+  createdAt    DateTime     @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+
+  @@index([organizationId])
 }
 
 model Expense {
   id             String  @id @default(uuid())
   organizationId String
   vendorId       String?
+  categoryId     String
 
   title       String
   description String?
 
   subtotal    Decimal  @db.Decimal(18, 2)
-  taxAmount   Decimal?
+  taxAmount   Decimal? @db.Decimal(18, 2)
   totalAmount Decimal  @db.Decimal(18, 2)
 
   currencyCode String
@@ -327,51 +508,14 @@ model Expense {
   expenseDate DateTime
   receiptUrl  String?
 
-  categoryId String
-
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category     ExpenseCategory @relation(fields: [categoryId], references: [id])
   vendor       Vendor?         @relation(fields: [vendorId], references: [id])
-}
 
-model ExpenseCategory {
-  id             String @id @default(uuid())
-  organizationId String
-  name           String
-
-  createdAt    DateTime     @default(now())
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenses     Expense[]
-}
-
-model Vendor {
-  id             String  @id @default(uuid())
-  organizationId String
-  name           String
-  email          String?
-  phone          String?
-  address        String?
-
-  createdAt    DateTime     @default(now())
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenses     Expense[]
-}
-
-model Product {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  sku            String?
-  price          Decimal  @db.Decimal(18, 2)
-  isService      Boolean  @default(false)
-  stockQuantity  Decimal? @db.Decimal(18, 2) // pour inventaire futur
-
-  createdAt DateTime @default(now())
-
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoiceItems InvoiceItem[]
-  quoteItems   QuoteItem[]
+  @@index([organizationId])
+  @@index([organizationId, expenseDate])
+  @@index([categoryId])
 }
