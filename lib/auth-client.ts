@@ -2,18 +2,18 @@
 import { createAuthClient } from "better-auth/react"
 import { organizationClient } from "better-auth/client/plugins"
 import { phoneNumberClient } from "better-auth/client/plugins"
-import { twoFactorClient } from "better-auth/client/plugins"
+import { emailOTPClient } from "better-auth/client/plugins"   // ← ajouté
+import { env } from "@/lib/env"
 
 export const authClient = createAuthClient({
-    baseURL: process.env.NEXT_PUBLIC_APP_URL!,
+    baseURL: env.NEXT_PUBLIC_APP_URL,
     plugins: [
         organizationClient(),
         phoneNumberClient(),
-        twoFactorClient(),
+        emailOTPClient(),   // ← expose authClient.emailOtp.*
     ],
 })
 
-// Exports nommés pour usage direct dans les composants
 export const {
     signIn,
     signOut,
