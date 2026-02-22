@@ -153,7 +153,7 @@ export default function ForgotPasswordPage() {
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+        <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
             <div className="w-full max-w-md">
 
                 <div className="mb-6 text-center">
@@ -172,7 +172,7 @@ export default function ForgotPasswordPage() {
                     <StepDot number={2} label="Nouveau mdp" active={step === 2} done={false} />
                 </div>
 
-                <div className="rounded-xl bg-white p-8 shadow-sm">
+                <div className="rounded-xl bg-white p-8 shadow-md">
 
                     {error && (
                         <div className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
@@ -185,13 +185,13 @@ export default function ForgotPasswordPage() {
                     {step === 1 && (
                         <form onSubmit={handleSendCode} className="space-y-5">
 
-                            <div className="flex rounded-lg border border-gray-200 p-1">
+                            <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-100">
                                 {(["email", "phone"] as Method[]).map((m) => (
                                     <button
                                         key={m}
                                         type="button"
                                         onClick={() => { setMethod(m); setError(null) }}
-                                        className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${method === m ? "bg-black text-white" : "text-gray-500 hover:text-gray-700"
+                                        className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${method === m ? "bg-white text-black" : "text-gray-500 hover:text-gray-700"
                                             }`}
                                     >
                                         {m === "email" ? "📧 Email" : "📱 Téléphone"}
