@@ -10,14 +10,14 @@ export default async function OrgLayout({ children, params }: { children: React.
 
     return (
         <SessionProvider session={session}>
-            <div className="flex h-screen bg-gray-50 overflow-hidden">
+            <div className="flex h-screen bg-gray-100 overflow-hidden">
                 <SidebarContent />
 
                 <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
                     <OrgTopbar />
 
                     {/* On ajoute pb-20 sur mobile pour laisser la place au MobileNav */}
-                    <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8">
+                    <div className="flex-1 overflow-y-auto p-2 md:p-4 pb-32 md:pb-4">
                         {children}
                     </div>
                 </main>
