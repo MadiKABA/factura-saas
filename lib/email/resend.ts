@@ -123,31 +123,55 @@ export async function sendResetPasswordOtpEmail({
   to: string
   otp: string
 }) {
+  const appName = "Factura";
+  const accentColor = "#000000"; // Noir pur pour un look moderne
+
   await resend.emails.send({
-    from: env.RESEND_FROM_EMAIL,
+    from: `${appName} <${env.RESEND_FROM_EMAIL}>`,
     to,
-    subject: `Ton code de réinitialisation — ${otp}`,
+    subject: `${otp} est votre code de vérification Factura`,
     html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-        <h2 style="font-size:20px;font-weight:700;color:#111;margin-bottom:8px">
-          Réinitialisation de mot de passe
-        </h2>
-        <p style="color:#555;font-size:14px;margin-bottom:24px">
-          Tu as demandé à réinitialiser ton mot de passe. Voici ton code :
-        </p>
+      <div style="background-color:#f8fafc;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        <div style="max-width:440px;margin:0 auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);border:1px solid #e2e8f0;">
+          
+          <div style="padding:32px 32px 0 32px;">
+             <div style="font-size:22px; font-weight:800; color:${accentColor}; letter-spacing:-0.025em; display:flex; items-center:center;">
+               <span style="background:${accentColor}; color:#fff; padding:2px 8px; border-radius:6px; margin-right:8px;">F</span>
+               ${appName}
+             </div>
+          </div>
 
-        <div style="background:#f5f5f5;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
-          <span style="font-size:36px;font-weight:800;letter-spacing:10px;color:#111">
-            ${otp}
-          </span>
+          <div style="padding:32px;">
+            <h2 style="font-size:18px;font-weight:600;color:#0f172a;margin:0 0 10px 0;">
+              Réinitialisation de mot de passe
+            </h2>
+            <p style="color:#64748b;font-size:14px;line-height:22px;margin:0 0 24px 0;">
+              Vous avez demandé un code pour modifier votre mot de passe. Utilisez le code sécurisé ci-dessous :
+            </p>
+
+            <div style="background-color:#f1f5f9;border-radius:8px;padding:24px;text-align:center;border:1px dotted #cbd5e1;">
+              <div style="font-family:'SF Mono',Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:12px;color:#0f172a;margin:0; padding-left:12px;">
+                ${otp}
+              </div>
+            </div>
+
+            <p style="margin-top:20px; color:#94a3b8;font-size:12px;text-align:center;">
+              Ce code est valable pendant <strong>5 minutes</strong>.
+            </p>
+
+            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #f1f5f9;">
+              <p style="color:#94a3b8;font-size:12px;line-height:16px;margin:0;">
+                Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email. Pour votre sécurité, ne partagez jamais ce code.
+              </p>
+            </div>
+          </div>
         </div>
-
-        <p style="color:#888;font-size:13px;margin-bottom:8px">
-          ⏱ Ce code expire dans <strong>5 minutes</strong>.
-        </p>
-        <p style="color:#888;font-size:13px;">
-          Si tu n'as pas fait cette demande, ignore cet email.
-        </p>
+        
+        <div style="text-align:center;margin-top:20px;">
+          <p style="color:#94a3b8;font-size:11px;margin:0;text-transform:uppercase;letter-spacing:1px;">
+            &copy; ${new Date().getFullYear()} Factura Inc.
+          </p>
+        </div>
       </div>
     `,
   })
