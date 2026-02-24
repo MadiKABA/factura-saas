@@ -1,4 +1,3 @@
-// src/app/(auth)/login/page.tsx
 "use client"
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -14,6 +13,7 @@ export default function LoginPage() {
     const [tab, setTab] = useState<Tab>("email")
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
+    const [showPassword, setShowPassword] = useState(false)
 
     // ─── Login email + mot de passe ─────────────────────────────────────────────
     async function handleEmailLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -32,7 +32,6 @@ export default function LoginPage() {
             setError(error.message ?? "Identifiants incorrects")
             setLoading(false)
         }
-        // Better-Auth gère la redirection via callbackURL
     }
 
     // ─── Login Google ────────────────────────────────────────────────────────────
@@ -46,7 +45,6 @@ export default function LoginPage() {
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
             <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-
                 <h1 className="mb-6 text-2xl font-bold">Connexion</h1>
 
                 {/* Tabs Email / Téléphone */}
@@ -82,14 +80,23 @@ export default function LoginPage() {
                             autoComplete="email"
                             className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
                         />
-                        <input
-                            name="password"
-                            type="password"
-                            placeholder="Mot de passe"
-                            required
-                            autoComplete="current-password"
-                            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
-                        />
+                        <div className="relative">
+                            <input
+                                name="password"
+                                type={showPassword ? "text" : "password"}
+                                placeholder="Mot de passe"
+                                required
+                                autoComplete="current-password"
+                                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                                {showPassword ? "Masquer" : "Afficher"}
+                            </button>
+                        </div>
                         <div className="text-right">
                             <a href="/forgot-password" className="text-xs text-gray-500 hover:underline">
                                 Mot de passe oublié ?
@@ -136,7 +143,6 @@ export default function LoginPage() {
 }
 
 // ─── Composant OTP téléphone ─────────────────────────────────────────────────
-
 function PhoneOtpForm({ callbackUrl }: { callbackUrl: string }) {
     const [step, setStep] = useState<"phone" | "code">("phone")
     const [phone, setPhone] = useState("")
@@ -171,7 +177,6 @@ function PhoneOtpForm({ callbackUrl }: { callbackUrl: string }) {
             setError(error.message ?? "Code incorrect")
             setLoading(false)
         }
-        // Redirection gérée automatiquement par Better-Auth
     }
 
     if (step === "phone") {
