@@ -41,9 +41,15 @@ importers:
       lucide-react:
         specifier: ^0.575.0
         version: 0.575.0(react@19.2.3)
+      n2words:
+        specifier: ^3.1.0
+        version: 3.1.0
       next:
         specifier: 16.1.6
         version: 16.1.6(@babel/core@7.29.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      number-to-words:
+        specifier: ^1.2.4
+        version: 1.2.4
       pg:
         specifier: ^8.18.0
         version: 8.18.0
@@ -72,6 +78,9 @@ importers:
       '@types/node':
         specifier: ^20
         version: 20.19.33
+      '@types/number-to-words':
+        specifier: ^1.2.3
+        version: 1.2.3
       '@types/pg':
         specifier: ^8.16.0
         version: 8.16.0
@@ -1842,6 +1851,9 @@ packages:
   '@types/node@20.19.33':
     resolution: {integrity: sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw==}
 
+  '@types/number-to-words@1.2.3':
+    resolution: {integrity: sha512-ruSA/QZ6JQofoEEN2zKmN9oihZmrCBgcw0zEzN0UA9Mw0pU5remTddZmrbHjsa99qz12Uxl82x+XkVpHu87oXw==}
+
   '@types/pako@2.0.4':
     resolution: {integrity: sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==}
 
@@ -3578,6 +3590,10 @@ packages:
     resolution: {integrity: sha512-FBrGau0IXmuqg4haEZRBfHNWB5mUARw6hNwPDXXGg0XzVJ50mr/9hb267lvpVMnhZ1FON3qNd4Xfcez1rbFwSg==}
     engines: {node: '>= 8.0'}
 
+  n2words@3.1.0:
+    resolution: {integrity: sha512-wU0Zljvr65R0lNJgPqfBPEcLsvo0bAcrw6Tm1wyZMYF5xfrKatc0k+DYVoP1oXKOFfspAJlxXp3wbIB0VtIG6g==}
+    engines: {node: '>=20'}
+
   named-placeholders@1.1.6:
     resolution: {integrity: sha512-Tz09sEL2EEuv5fFowm419c1+a/jSMiBjI9gHxVLrVdbUkkNUUfjsVYs9pVZu5oCon/kmRh9TfLEObFtkVxmY0w==}
     engines: {node: '>=8.0.0'}
@@ -3650,6 +3666,9 @@ packages:
   npm-run-path@6.0.0:
     resolution: {integrity: sha512-9qny7Z9DsQU8Ou39ERsPU4OZQlSTP47ShQzuKZ6PRXpYLtIFgl/DEBYEXKlvcEa+9tHVcK8CF81Y2V72qaZhWA==}
     engines: {node: '>=18'}
+
+  number-to-words@1.2.4:
+    resolution: {integrity: sha512-/fYevVkXRcyBiZDg6yzZbm0RuaD6i0qRfn8yr+6D0KgBMOndFPxuW10qCHpzs50nN8qKuv78k8MuotZhcVX6Pw==}
 
   nypm@0.6.5:
     resolution: {integrity: sha512-K6AJy1GMVyfyMXRVB88700BJqNUkByijGJM8kEHpLdcAt+vSQAVfkWWHYzuRXHSY6xA2sNc5RjTj0p9rE2izVQ==}
@@ -6317,6 +6336,8 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/number-to-words@1.2.3': {}
+
   '@types/pako@2.0.4': {}
 
   '@types/pg@8.16.0':
@@ -8148,6 +8169,8 @@ snapshots:
       seq-queue: 0.0.5
       sqlstring: 2.3.3
 
+  n2words@3.1.0: {}
+
   named-placeholders@1.1.6:
     dependencies:
       lru.min: 1.1.4
@@ -8213,6 +8236,8 @@ snapshots:
     dependencies:
       path-key: 4.0.0
       unicorn-magic: 0.3.0
+
+  number-to-words@1.2.4: {}
 
   nypm@0.6.5:
     dependencies:

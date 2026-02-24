@@ -111,134 +111,206 @@ export default function InvoiceDetailClient({ orgSlug, org, invoice }: Props) {
         const { jsPDF: JsPDF, autoTable } = await loadJsPDF()
         const doc = new JsPDF({ unit: "mm", format: "a4" })
 
-        const primary = [15, 15, 15] as [number, number, number]
-        const muted = [120, 120, 120] as [number, number, number]
-        const light = [245, 245, 245] as [number, number, number]
+        // ───────── FORMATTER MONTANT ─────────
+        const currencyFormatter = new Intl.NumberFormat("fr-FR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })
 
-        // ── En-tête ──────────────────────────────────────────────────
-        doc.setFillColor(...primary)
-        doc.rect(0, 0, 210, 28, "F")
-        doc.setTextColor(255, 255, 255)
-        doc.setFontSize(20)
+        const fmtAmount = (value: number) =>
+            currencyFormatter.format(Number(value) || 0)
+
+        // ───────── CONVERSION NOMBRE → LETTRES ─────────
+        function numberToFrenchWords(n: number): string {
+            const units = [
+                "", "un", "deux", "trois", "quatre", "cinq", "six",
+                "sept", "huit", "neuf", "dix", "onze", "douze",
+                "treize", "quatorze", "quinze", "seize"
+            ]
+
+            if (n === 0) return "zéro"
+            if (n < 17) return units[n]
+            if (n < 20) return "dix-" + units[n - 10]
+
+            if (n < 100) {
+                const tens = Math.floor(n / 10)
+                const remainder = n % 10
+                const tensWords = [
+                    "", "", "vingt", "trente", "quarante",
+                    "cinquante", "soixante"
+                ]
+
+                if (tens <= 6) {
+                    return tensWords[tens] + (remainder ? "-" + units[remainder] : "")
+                }
+
+                if (tens === 7) {
+                    return "soixante-" + numberToFrenchWords(10 + remainder)
+                }
+
+                if (tens === 8) {
+                    return "quatre-vingt" + (remainder ? "-" + units[remainder] : "s")
+                }
+
+                if (tens === 9) {
+                    return "quatre-vingt-" + numberToFrenchWords(10 + remainder)
+                }
+            }
+
+            if (n < 1000) {
+                const hundreds = Math.floor(n / 100)
+                const remainder = n % 100
+                let word = hundreds > 1 ? units[hundreds] + " cent" : "cent"
+                if (remainder) word += " " + numberToFrenchWords(remainder)
+                return word
+            }
+
+            if (n < 1000000) {
+                const thousands = Math.floor(n / 1000)
+                const remainder = n % 1000
+                let word = thousands > 1
+                    ? numberToFrenchWords(thousands) + " mille"
+                    : "mille"
+                if (remainder) word += " " + numberToFrenchWords(remainder)
+                return word
+            }
+
+            return n.toString()
+        }
+
+        // ───────── PALETTE ─────────
+        const primary = [15, 23, 42] as [number, number, number]
+        const muted = [100, 116, 139] as [number, number, number]
+        const border = [226, 232, 240] as [number, number, number]
+
+        // ───────── CALCULS TOTAUX ─────────
+        const subtotal = invoice.items.reduce((acc, item) => {
+            const q = Number(item.quantity) || 0
+            const p = Number(item.unitPrice) || 0
+            return acc + q * p
+        }, 0)
+
+        const taxRate = Number(invoice.taxTotal) || 0
+        const totalTVA = subtotal * (taxRate / 100)
+        const totalTTC = subtotal + totalTVA
+
+        // ───────── HEADER ─────────
+        doc.setFillColor(245, 245, 245)
+        doc.roundedRect(14, 15, 20, 20, 3, 3, "F")
+        doc.setTextColor(...muted)
+        doc.setFontSize(12)
         doc.setFont("helvetica", "bold")
-        doc.text("FACTURE", 14, 17)
+        doc.text(org.name ? org.name.charAt(0).toUpperCase() : "F", 24, 28, { align: "center" })
+
+        doc.setTextColor(...primary)
+        doc.setFontSize(22)
+        doc.text("FACTURE", 40, 26)
+
         doc.setFontSize(10)
-        doc.setFont("helvetica", "normal")
-        doc.text(invoice.number, 14, 23)
-        doc.setFontSize(9)
-        doc.text(org.name, 196, 17, { align: "right" })
-        if (org.address) doc.text(org.address, 196, 22, { align: "right" })
-
-        // ── Bloc client ───────────────────────────────────────────────
-        doc.setTextColor(...primary)
+        doc.text(org.name.toUpperCase(), 196, 20, { align: "right" })
         doc.setFontSize(8)
-        doc.setFont("helvetica", "bold")
-        doc.text("FACTURÉ À", 14, 38)
         doc.setFont("helvetica", "normal")
         doc.setTextColor(...muted)
-        doc.setFontSize(9)
-        if (invoice.client) {
-            doc.setTextColor(...primary)
-            doc.setFont("helvetica", "bold")
-            doc.setFontSize(10)
-            doc.text(invoice.client.name, 14, 44)
-            doc.setFont("helvetica", "normal")
-            doc.setFontSize(9)
-            doc.setTextColor(...muted)
-            let cy = 49
-            if (invoice.client.address) { doc.text(invoice.client.address, 14, cy); cy += 5 }
-            if (invoice.client.email) { doc.text(invoice.client.email, 14, cy); cy += 5 }
-            if (invoice.client.phone) { doc.text(invoice.client.phone, 14, cy) }
-        }
+        if (org.address) doc.text(org.address, 196, 25, { align: "right" })
 
-        // ── Dates ─────────────────────────────────────────────────────
+        doc.setDrawColor(...border)
+        doc.line(14, 40, 196, 40)
+
+        // ───────── CLIENT & INFOS ─────────
         doc.setTextColor(...muted)
         doc.setFontSize(8)
         doc.setFont("helvetica", "bold")
-        doc.text("DATE D'ÉMISSION", 130, 38)
+        doc.text("FACTURÉ À", 14, 50)
+
+        doc.setTextColor(...primary)
+        doc.setFontSize(11)
+        doc.text(invoice.client?.name || "Client", 14, 56)
+
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(9)
+        doc.setTextColor(...muted)
+        if (invoice.client?.address)
+            doc.text(invoice.client.address, 14, 62)
+
+        const infoX = 140
+        doc.setFont("helvetica", "bold")
+        doc.text("N° FACTURE", infoX, 50)
+        doc.text("DATE", infoX, 60)
+
         doc.setFont("helvetica", "normal")
         doc.setTextColor(...primary)
-        doc.setFontSize(9)
-        doc.text(new Date(invoice.issueDate).toLocaleDateString("fr-FR"), 130, 43)
+        doc.text(invoice.number, 196, 50, { align: "right" })
+        doc.text(
+            new Date(invoice.issueDate).toLocaleDateString("fr-FR"),
+            196,
+            60,
+            { align: "right" }
+        )
 
-        if (invoice.dueDate) {
-            doc.setTextColor(...muted)
-            doc.setFont("helvetica", "bold")
-            doc.setFontSize(8)
-            doc.text("ÉCHÉANCE", 130, 51)
-            doc.setFont("helvetica", "normal")
-            doc.setTextColor(...primary)
-            doc.setFontSize(9)
-            doc.text(new Date(invoice.dueDate).toLocaleDateString("fr-FR"), 130, 56)
-        }
+        // ───────── TABLEAU (SANS TVA) ─────────
+        const tableData = invoice.items.map(item => {
+            const quantity = Number(item.quantity) || 0
+            const unitPrice = Number(item.unitPrice) || 0
+            const lineTotal = quantity * unitPrice
 
-        // ── Tableau articles ──────────────────────────────────────────
-        const tableData = invoice.items.map(item => [
-            item.name + (item.description ? `\n${item.description}` : ""),
-            String(item.quantity),
-            fmt(item.unitPrice) + " " + invoice.currencyCode,
-            item.taxRate ? `${item.taxRate.rate}%` : "—",
-            fmt(item.total) + " " + invoice.currencyCode,
-        ])
+            return [
+                item.name,
+                quantity,
+                fmtAmount(unitPrice),
+                fmtAmount(lineTotal)
+            ]
+        })
 
         autoTable(doc, {
-            startY: 70,
-            head: [["DÉSIGNATION", "QTÉ", "PRIX UNITAIRE", "TVA", "TOTAL HT"]],
+            startY: 75,
+            head: [["DÉSIGNATION", "QTÉ", "PRIX UNITÉ", "TOTAL"]],
             body: tableData,
-            headStyles: {
-                fillColor: primary, textColor: [255, 255, 255],
-                fontStyle: "bold", fontSize: 8,
-            },
-            bodyStyles: { fontSize: 9, textColor: primary },
-            alternateRowStyles: { fillColor: light },
-            columnStyles: {
-                0: { cellWidth: 75 },
-                1: { halign: "center", cellWidth: 15 },
-                2: { halign: "right", cellWidth: 35 },
-                3: { halign: "center", cellWidth: 20 },
-                4: { halign: "right", cellWidth: 35 },
-            },
+            theme: "striped",
+            headStyles: { fillColor: primary, fontSize: 8, fontStyle: "bold" },
+            bodyStyles: { fontSize: 9, textColor: [40, 40, 40] },
             margin: { left: 14, right: 14 },
         })
 
-        const finalY = (doc as any).lastAutoTable.finalY + 8
+        let finalY = (doc as any).lastAutoTable.finalY + 12
 
-        // ── Totaux ────────────────────────────────────────────────────
-        const totalsX = 130
-        doc.setDrawColor(220, 220, 220)
-        doc.line(totalsX, finalY, 196, finalY)
-
-        doc.setFontSize(9); doc.setTextColor(...muted)
-        doc.text("Sous-total HT", totalsX, finalY + 6)
-        doc.setTextColor(...primary)
-        doc.text(fmt(invoice.subtotal) + " " + invoice.currencyCode, 196, finalY + 6, { align: "right" })
-
+        // ───────── MONTANT EN LETTRES ─────────
+        doc.setFontSize(8)
+        doc.setFont("helvetica", "bold")
         doc.setTextColor(...muted)
-        doc.text("TVA", totalsX, finalY + 12)
+        doc.text("ARRÊTÉE LA PRÉSENTE FACTURE À LA SOMME DE :", 14, finalY)
+
+        const totalRounded = Math.round(totalTTC)
+        const totalInWords = numberToFrenchWords(totalRounded)
+
+        doc.setFont("helvetica", "normal")
         doc.setTextColor(...primary)
-        doc.text(fmt(invoice.taxTotal) + " " + invoice.currencyCode, 196, finalY + 12, { align: "right" })
+        doc.text(
+            `${totalInWords.toUpperCase()} ${invoice.currencyCode}`,
+            14,
+            finalY + 6
+        )
 
-        doc.setDrawColor(220, 220, 220)
-        doc.line(totalsX, finalY + 16, 196, finalY + 16)
-
-        doc.setFont("helvetica", "bold"); doc.setFontSize(11)
+        // ───────── TOTAL TTC ─────────
+        const totalsX = 145
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(12)
         doc.setTextColor(...primary)
-        doc.text("Total TTC", totalsX, finalY + 23)
-        doc.text(fmt(invoice.total) + " " + invoice.currencyCode, 196, finalY + 23, { align: "right" })
+        doc.text("TOTAL TTC", totalsX, finalY + 15)
+        doc.text(
+            `${fmtAmount(totalTTC)} ${invoice.currencyCode}`,
+            196,
+            finalY + 15,
+            { align: "right" }
+        )
 
-        // ── Notes ─────────────────────────────────────────────────────
-        if (invoice.notes) {
-            const notesY = finalY + 35
-            doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...muted)
-            doc.text("NOTE", 14, notesY)
-            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...primary)
-            const lines = doc.splitTextToSize(invoice.notes, 90)
-            doc.text(lines, 14, notesY + 5)
-        }
-
-        // ── Pied de page ──────────────────────────────────────────────
-        doc.setFontSize(7); doc.setTextColor(...muted)
-        doc.text("Document généré automatiquement", 105, 285, { align: "center" })
+        // ───────── FOOTER ─────────
+        doc.setFontSize(7)
+        doc.text(
+            "Document généré par Factura - Merci de votre confiance",
+            105,
+            285,
+            { align: "center" }
+        )
 
         return doc.output("blob")
     }
