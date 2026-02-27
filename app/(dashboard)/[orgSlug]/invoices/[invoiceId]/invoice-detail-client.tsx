@@ -11,6 +11,7 @@ import {
     Share2, Loader2, Building2, Calendar, Clock, CreditCard, StickyNote,
 } from "lucide-react"
 import { updateInvoiceStatusAction } from "@/server/actions/invoice.action"
+import { AddPaymentModal } from "@/components/invoices/add-payment-modal"
 
 // ─── jsPDF chargé dynamiquement (évite le bundle SSR) ────────────────────────
 async function loadJsPDF() {
@@ -44,7 +45,9 @@ type Props = {
             taxRate: { name: string; rate: number } | null
         }[]
         payments: { id: string; amount: number; paidAt: Date; method: string | null; note: string | null }[]
-    }
+    },
+    payments: { id: string; amount: number; paidAt: Date; method: string | null; note: string | null }[]
+
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,6 +95,9 @@ export default function InvoiceDetailClient({ orgSlug, org, invoice }: Props) {
     const paidAmount = invoice.payments.reduce((s, p) => s + p.amount, 0)
     const remaining = invoice.total - paidAmount
     const transitions = allowedTransitions(currentStatus)
+
+    const [paymentModal, setPaymentModal] = useState(false)
+    const [payments, setPayments] = useState(invoice.payments)
 
     // ─── Actions ───────────────────────────────────────────────────────────────
     function handleUpdateStatus() {
@@ -706,10 +712,13 @@ export default function InvoiceDetailClient({ orgSlug, org, invoice }: Props) {
                             {invoice.payments.length === 0 ? (
                                 <div className="px-6 py-10 text-center">
                                     <p className="text-zinc-400 text-sm">Aucun paiement enregistré</p>
+                                    {/* Enregistrer paiement */}
                                     {currentStatus !== "PAID" && currentStatus !== "CANCELLED" && (
-                                        <button className="mt-3 text-sm text-blue-500 underline hover:text-blue-700">
-                                            + Enregistrer un paiement
-                                        </button>
+                                        <Button variant="outline" size="sm" className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                            onClick={() => setPaymentModal(true)}>
+                                            <CreditCard className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">Paiement</span>
+                                        </Button>
                                     )}
                                 </div>
                             ) : (
@@ -736,6 +745,28 @@ export default function InvoiceDetailClient({ orgSlug, org, invoice }: Props) {
                                 </div>
                             )}
                         </div>
+
+                        <AddPaymentModal
+                            open={paymentModal}
+                            onClose={() => setPaymentModal(false)}
+                            onSuccess={({ paymentId, newStatus, paidTotal }) => {
+                                // Mise à jour locale immédiate sans revalidation
+                                setCurrentStatus(newStatus as InvoiceStatus)
+                                setPayments(prev => [...prev, {
+                                    id: paymentId,
+                                    amount: paidTotal - prev.reduce((s, p) => s + p.amount, 0),
+                                    paidAt: new Date(),
+                                    method: null,
+                                    note: null,
+                                }])
+                            }}
+                            orgSlug={orgSlug}
+                            invoiceId={invoice.id}
+                            invoiceTotal={invoice.total}
+                            alreadyPaid={paidAmount}
+                            currency={invoice.currencyCode}
+                        />
+
 
                         {/* ── Actions rapides ───────────────────────────────────────── */}
                         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-5 space-y-2">
