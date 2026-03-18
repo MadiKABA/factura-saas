@@ -28,13 +28,27 @@ export default async function InvoiceDetailPage({
     if (!membership) redirect("/")
 
     const invoice = await getInvoiceById(invoiceId, org.id)
+    const rawPayments = await prisma.payment.findMany({
+        where: { invoiceId: invoiceId },
+        orderBy: { createdAt: 'desc' }
+    })
     if (!invoice) redirect(`/${orgSlug}/invoices`)
+
+    // Sérialiser Decimal → number et PaymentMethod enum → string
+    const payments = rawPayments.map(p => ({
+        id: p.id,
+        amount: Number(p.amount),   // Decimal → number
+        paidAt: p.paidAt,
+        method: p.method as string, // PaymentMethod enum → string
+        note: p.note,
+    }))
 
     return (
         <InvoiceDetailClient
             orgSlug={orgSlug}
             org={org}
             invoice={invoice as any}
+            payments={payments || []}
         />
     )
 }

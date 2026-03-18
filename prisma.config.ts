@@ -9,6 +9,6 @@ export default defineConfig({
   },
   // Pour éviter l'erreur, on cast la configuration de la datasource
   datasource: {
-    url: process.env["DIRECT_URL"],
+    url: process.env["DATABASE_URL"],
   },
 });

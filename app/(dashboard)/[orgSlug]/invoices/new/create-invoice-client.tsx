@@ -207,82 +207,6 @@ export default function CreateInvoiceClient({
                 </Card>
             )}
 
-            {/* Client */}
-            <Card className="rounded-2xl">
-                <CardHeader><CardTitle>Client</CardTitle></CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="flex items-center justify-between">
-                        <Label>Client existant</Label>
-                        <Switch checked={useExistingClient} onCheckedChange={setUseExistingClient} />
-                    </div>
-
-                    {useExistingClient ? (
-                        <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner un client" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {clients.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                        {c.name}{c.email ? ` — ${c.email}` : c.phone ? ` — ${c.phone}` : ""}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    ) : (
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Type de client</Label>
-                                <Select value={clientType} onValueChange={setClientType}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="INDIVIDUAL">Particulier</SelectItem>
-                                        <SelectItem value="COMPANY">Entreprise</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <Input
-                                placeholder={clientType === "COMPANY" ? "Nom de l'entreprise" : "Nom complet"}
-                                value={client.name}
-                                onChange={e => setClient({ ...client, name: e.target.value })}
-                            />
-                            <Input
-                                placeholder="Email"
-                                value={client.email}
-                                onChange={e => setClient({ ...client, email: e.target.value })}
-                            />
-                            <Input
-                                placeholder="Adresse"
-                                value={client.address}
-                                onChange={e => setClient({ ...client, address: e.target.value })}
-                            />
-                            {clientType === "COMPANY" && (
-                                <Input
-                                    placeholder="Numéro TVA / SIRET"
-                                    value={client.taxId}
-                                    onChange={e => setClient({ ...client, taxId: e.target.value })}
-                                />
-                            )}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Dates */}
-            <Card className="rounded-2xl">
-                <CardHeader><CardTitle>Dates</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>Date de facturation</Label>
-                        <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Date d'échéance (optionnel)</Label>
-                        <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-                    </div>
-                </CardContent>
-            </Card>
-
             {/* Produits / Services */}
             <Card className="rounded-2xl">
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -356,6 +280,84 @@ export default function CreateInvoiceClient({
                 </CardContent>
             </Card>
 
+            {/* Dates */}
+            <Card className="rounded-2xl">
+                <CardHeader><CardTitle>Dates</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Date de facturation</Label>
+                        <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Date d'échéance (optionnel)</Label>
+                        <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                    </div>
+                </CardContent>
+            </Card>
+            {/* Client */}
+            <Card className="rounded-2xl">
+                <CardHeader><CardTitle>Client</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <Label>Client existant</Label>
+                        <Switch checked={useExistingClient} onCheckedChange={setUseExistingClient} />
+                    </div>
+
+                    {useExistingClient ? (
+                        <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner un client" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {clients.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                        {c.name}{c.email ? ` — ${c.email}` : c.phone ? ` — ${c.phone}` : ""}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Type de client</Label>
+                                <Select value={clientType} onValueChange={setClientType}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="INDIVIDUAL">Particulier</SelectItem>
+                                        <SelectItem value="COMPANY">Entreprise</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <Input
+                                placeholder={clientType === "COMPANY" ? "Nom de l'entreprise" : "Nom complet"}
+                                value={client.name}
+                                onChange={e => setClient({ ...client, name: e.target.value })}
+                            />
+                            <Input
+                                placeholder="Email"
+                                value={client.email}
+                                onChange={e => setClient({ ...client, email: e.target.value })}
+                            />
+                            <Input
+                                placeholder="Adresse"
+                                value={client.address}
+                                onChange={e => setClient({ ...client, address: e.target.value })}
+                            />
+                            {clientType === "COMPANY" && (
+                                <Input
+                                    placeholder="Numéro TVA / SIRET"
+                                    value={client.taxId}
+                                    onChange={e => setClient({ ...client, taxId: e.target.value })}
+                                />
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+
+
+
             {/* TVA */}
             <Card className="rounded-2xl">
                 <CardHeader><CardTitle>TVA</CardTitle></CardHeader>
@@ -421,75 +423,93 @@ export default function CreateInvoiceClient({
     );
 
     const PreviewSection = (
-        <PreviewCard className="rounded-2xl p-8 min-h-[600px]">
-            <div className="space-y-6">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h2 className="text-2xl font-bold">FACTURE</h2>
-                        <p>Date: {new Date().toLocaleDateString()}</p>
+        <PreviewCard className="rounded-sm h-fit p-8  w-full transition-all duration-300">
+            <div className="flex flex-col space-y-6">
+                {/* Header */}
+                <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1">
+                        <h2 className="text-2xl font-bold tracking-tight">FACTURE</h2>
+                        <p className="text-sm text-muted-foreground">Date: {new Date().toLocaleDateString()}</p>
                     </div>
-                    <div className="text-right">
-                        <p className="font-semibold">{orgName}</p>
+                    <div className="text-right flex-1">
+                        <p className="font-semibold text-lg">{orgName || "Votre Organisation"}</p>
                     </div>
                 </div>
 
+                {/* Section Client */}
                 <div className="border-t pt-4">
-                    <p className="font-semibold">Facturé à :</p>
-                    {useExistingClient ? (
-                        (() => {
-                            const c = clients.find(c => c.id === selectedClientId);
-                            return c ? (
-                                <>
-                                    <p>{c.name}</p>
-                                    {c.email && <p>{c.email}</p>}
-                                    {c.phone && <p>{c.phone}</p>}
-                                </>
-                            ) : <p className="text-muted-foreground">—</p>;
-                        })()
-                    ) : (
-                        <>
-                            <p>{client.name || "Nom du client"}</p>
-                            <p>{client.email}</p>
-                            <p>{client.address}</p>
-                            {clientType === "COMPANY" && client.taxId && <p>TVA: {client.taxId}</p>}
-                        </>
-                    )}
+                    <p className="font-semibold text-sm uppercase text-muted-foreground mb-2">Facturé à :</p>
+                    <div className="space-y-1">
+                        {useExistingClient ? (
+                            (() => {
+                                const c = clients.find(c => c.id === selectedClientId);
+                                return c ? (
+                                    <>
+                                        <p className="font-medium">{c.name}</p>
+                                        {c.email && <p className="text-sm">{c.email}</p>}
+                                        {c.phone && <p className="text-sm">{c.phone}</p>}
+                                    </>
+                                ) : <p className="text-muted-foreground italic">— Sélectionner un client —</p>;
+                            })()
+                        ) : (
+                            <>
+                                <p className="font-medium">{client.name || "Nom du client"}</p>
+                                {client.email && <p className="text-sm">{client.email}</p>}
+                                {client.address && <p className="text-sm whitespace-pre-line">{client.address}</p>}
+                                {clientType === "COMPANY" && client.taxId && (
+                                    <p className="text-xs mt-1">TVA: {client.taxId}</p>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
 
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Qté</TableHead>
-                            <TableHead>PU</TableHead>
-                            <TableHead>Total</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {items.map((item, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{item.name}</TableCell>
-                                <TableCell>{item.quantity}</TableCell>
-                                <TableCell>{item.unitPrice}</TableCell>
-                                <TableCell>{item.total.toFixed(2)}</TableCell>
+                {/* Table - Elle va pousser le conteneur vers le bas naturellement */}
+                <div className="w-full">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[40%] text-left">Description</TableHead>
+                                <TableHead className="text-center">Qté</TableHead>
+                                <TableHead className="text-right">PU</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {items.length > 0 ? (
+                                items.map((item, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell className="text-center">{item.quantity}</TableCell>
+                                        <TableCell className="text-right">{item.unitPrice}</TableCell>
+                                        <TableCell className="text-right font-semibold">{item.total.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground italic">
+                                        Aucun article ajouté
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
 
-                <div className="flex justify-end">
-                    <div className="w-64 space-y-2 text-lg">
-                        <div className="flex justify-between">
-                            <span>Sous-total</span>
-                            <span>{subtotal.toFixed(2)} {defaultCurrency}</span>
+                {/* Totaux */}
+                <div className="flex justify-end pt-4">
+                    <div className="w-full max-w-[280px] space-y-3">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Sous-total</span>
+                            <span className="font-medium">{subtotal.toFixed(2)} {defaultCurrency}</span>
                         </div>
                         {useVAT && (
-                            <div className="flex justify-between">
-                                <span>TVA ({vatRate}%)</span>
-                                <span>{tax.toFixed(2)} {defaultCurrency}</span>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">TVA ({vatRate}%)</span>
+                                <span className="font-medium">{tax.toFixed(2)} {defaultCurrency}</span>
                             </div>
                         )}
-                        <div className="flex justify-between font-bold text-xl">
+                        <div className="border-t pt-3 flex justify-between items-center font-bold text-xl text-primary">
                             <span>Total</span>
                             <span>{total.toFixed(2)} {defaultCurrency}</span>
                         </div>
@@ -499,19 +519,30 @@ export default function CreateInvoiceClient({
         </PreviewCard>
     );
 
+    // REMPLACE tout le return par :
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 md:pb-8">
 
-            {/* Compteur plan — discret, en haut à droite */}
             {planInfo.planLimit !== null && (
                 <p className="mb-4 text-xs text-muted-foreground text-right">
                     {planInfo.currentCount}/{planInfo.planLimit} factures — plan {planInfo.planName}
                 </p>
             )}
 
-            <div className="hidden md:grid md:grid-cols-2 gap-8">
+            <div className="hidden md:grid md:grid-cols-2 gap-8 items-start">
                 {FormSection}
-                {PreviewSection}
+                {/* Preview + boutons collés en dessous */}
+                <div className="flex flex-col gap-4">
+                    {PreviewSection}
+                    <div className="flex justify-end gap-3">
+                        <Button variant="outline" onClick={() => handleSave("DRAFT")} disabled={isPending}>
+                            {isPending ? "Enregistrement..." : "Brouillon"}
+                        </Button>
+                        <Button onClick={() => handleSave("SENT")} disabled={isPending}>
+                            {isPending ? "..." : "Créer la facture"}
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             <div className="md:hidden">
@@ -525,14 +556,15 @@ export default function CreateInvoiceClient({
                 </Tabs>
             </div>
 
-            <div className="flex justify-end gap-4 mt-8">
-                <Button variant="outline" onClick={() => handleSave("DRAFT")} disabled={isPending}>
-                    {isPending ? "Enregistrement..." : "Brouillon"}
+            {/* Sticky mobile */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-zinc-200 px-4 py-3 flex gap-3">
+                <Button variant="outline" onClick={() => handleSave("DRAFT")} disabled={isPending} className="flex-1">
+                    {isPending ? "Enregistrement..." : "💾 Brouillon"}
                 </Button>
-                <Button onClick={() => handleSave("SENT")} disabled={isPending}>
-                    {isPending ? "..." : "Créer la facture"}
+                <Button onClick={() => handleSave("SENT")} disabled={isPending} className="flex-1">
+                    {isPending ? "..." : "✉️ Créer"}
                 </Button>
             </div>
         </div>
-    );
+    )
 }
