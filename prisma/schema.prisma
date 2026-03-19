@@ -1,3 +1,10 @@
+// prisma/schema.prisma
+// ============================================================
+// VERSION 3 — Module Commerce complet
+// Ajouts : OrganizationType étendu, Product enrichi,
+//          Debt + DebtRepayment, Sale/Stock/Inventory/CashSession
+// ============================================================
+
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
@@ -16,6 +23,7 @@ enum UserRole {
   ADMIN
   ACCOUNTANT
   MEMBER
+  CASHIER // caissier — accès limité au POS uniquement
 }
 
 model User {
@@ -32,9 +40,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions    Session[]
-  accounts    Account[]
-  memberships Membership[]
+  sessions     Session[]
+  accounts     Account[]
+  memberships  Membership[]
+  cashSessions CashSession[]
 }
 
 model Session {
@@ -76,15 +85,13 @@ model Account {
   @@index([userId])
 }
 
-// Requis par Better-Auth pour OTP, email verification, reset password, etc.
 model Verification {
   id         String   @id @default(uuid())
-  identifier String // email ou phone
-  value      String // le token / code OTP
+  identifier String
+  value      String
   expiresAt  DateTime
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([identifier])
 }
@@ -93,34 +100,57 @@ model Verification {
 // ORGANISATION & MEMBERSHIP
 // ============================================================
 
+// Type d'organisation — conditionne la navigation et les features
+enum OrganizationType {
+  BUSINESS // Entrepreneur, PME, freelance  → devis + factures
+  RETAIL // Épicerie, boutique, magasin   → POS + stock
+  RESTAURANT // Restaurant, fast-food, café   → POS + tables
+  PHARMACY // Pharmacie                     → POS + péremption
+  SALON // Coiffure, beauté, spa         → POS + rendez-vous
+  WHOLESALE // Grossiste                     → vente en lot + prix palier
+}
+
 model Organization {
   id   String @id @default(uuid())
-  name String
   slug String @unique
 
-  defaultCurrency String @default("USD")
+  // name non-unique — deux boutiques peuvent avoir le même nom
+  name String
+  type OrganizationType @default(BUSINESS)
 
-  // Infos de facturation de l'org (affiché sur les factures/devis)
+  defaultCurrency String @default("XOF")
+
   address String?
   phone   String?
   email   String?
   website String?
-  taxId   String? // numéro de TVA / SIRET / etc.
+  taxId   String?
   logoUrl String?
+
+  // Config caisse
+  receiptHeader String? // texte en-tête ticket
+  receiptFooter String? // texte pied de ticket (ex: "Merci de votre visite")
+  receiptWidth  Int     @default(80) // largeur ticket en mm (58 ou 80)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships  Membership[]
-  invoices     Invoice[]
-  quotes       Quote[]
-  expenses     Expense[]
-  clients      Client[]
-  vendors      Vendor[]
-  categories   ExpenseCategory[]
-  products     Product[]
-  taxRates     TaxRate[]
-  subscription Subscription?
+  memberships       Membership[]
+  invoices          Invoice[]
+  quotes            Quote[]
+  expenses          Expense[]
+  clients           Client[]
+  vendors           Vendor[]
+  expenseCategories ExpenseCategory[]
+  productCategories ProductCategory[]
+  products          Product[]
+  taxRates          TaxRate[]
+  subscription      Subscription?
+  sales             Sale[]
+  cashSessions      CashSession[]
+  stockMovements    StockMovement[]
+  inventories       Inventory[]
+  debts             Debt[]
 }
 
 model Membership {
@@ -128,8 +158,7 @@ model Membership {
 
   userId         String
   organizationId String
-
-  role UserRole @default(MEMBER)
+  role           UserRole @default(MEMBER)
 
   createdAt DateTime @default(now())
 
@@ -168,6 +197,7 @@ model Plan {
   maxExpenses Int?
   maxUsers    Int?
   maxProducts Int?
+  maxSales    Int? // limite ventes/mois plan commerce
 
   createdAt DateTime @default(now())
 
@@ -182,9 +212,7 @@ model Subscription {
   status            SubscriptionStatus
   currentPeriodEnd  DateTime
   cancelAtPeriodEnd Boolean            @default(false)
-
-  // ID externe (Stripe, etc.)
-  externalId String?
+  externalId        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,13 +231,12 @@ model Currency {
   symbol String
 }
 
-// Taux de TVA réutilisables par organisation
 model TaxRate {
   id             String @id @default(uuid())
   organizationId String
 
-  name      String // ex: "TVA 20%", "TVA réduite 5.5%"
-  rate      Decimal @db.Decimal(5, 2) // ex: 20.00
+  name      String
+  rate      Decimal @db.Decimal(5, 2)
   isDefault Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -221,25 +248,79 @@ model TaxRate {
   @@index([organizationId])
 }
 
+// Catégorie produit — unique par organisation
+model ProductCategory {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name  String
+  color String? // hex ex: "#10b981"
+  icon  String? // emoji ex: "🥩"
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  // Nom unique par organisation
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
 model Product {
   id             String @id @default(uuid())
   organizationId String
 
-  name          String
-  description   String?
-  sku           String?
-  price         Decimal  @db.Decimal(18, 2)
-  isService     Boolean  @default(false)
+  name        String
+  description String?
+
+  // Identification
+  sku     String? // référence interne
+  barcode String? // code-barres EAN/QR
+
+  // Catégorie — unique par organisation
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id])
+
+  // Prix
+  price     Decimal  @db.Decimal(18, 2) // prix de vente
+  costPrice Decimal? @db.Decimal(18, 2) // prix d'achat (pour marge)
+
+  // Type
+  isService Boolean @default(false)
+
+  // Stock
+  currentStock  Decimal  @default(0) @db.Decimal(18, 2)
+  minStockAlert Decimal? @db.Decimal(18, 2) // seuil alerte rupture
+  unit          String   @default("pcs") // pcs, kg, litre, carton…
+
+  // POS
+  isFavorite Boolean @default(false) // épinglé en grille POS
+  isActive   Boolean @default(true) // archiver sans supprimer
+
+  // Péremption (pharmacie, alimentation)
+  expiryDate DateTime?
+
+  // Legacy
   stockQuantity Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoiceItems InvoiceItem[]
-  quoteItems   QuoteItem[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceItems   InvoiceItem[]
+  quoteItems     QuoteItem[]
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+  inventoryItems InventoryItem[]
 
+  // SKU unique par organisation (si renseigné)
+  @@unique([organizationId, sku])
   @@index([organizationId])
+  @@index([organizationId, isActive])
+  @@index([organizationId, isFavorite])
+  @@index([barcode])
+  @@index([organizationId, categoryId])
 }
 
 // ============================================================
@@ -261,8 +342,14 @@ model Client {
   address String?
   city    String?
   country String?
-  taxId   String? // TVA intracommunautaire, SIRET, etc.
+  taxId   String?
   type    ClientType @default(INDIVIDUAL)
+
+  // Fidélité commerce
+  loyaltyPoints Int @default(0)
+
+  // Note interne (ex: "client difficile", "paie toujours en retard")
+  note String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -270,8 +357,11 @@ model Client {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
   quotes       Quote[]
+  sales        Sale[]
+  debts        Debt[]
 
   @@index([organizationId])
+  @@index([organizationId, phone])
 }
 
 model Vendor {
@@ -282,12 +372,15 @@ model Vendor {
   email   String?
   phone   String?
   address String?
+  note    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenses     Expense[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses       Expense[]
+  stockMovements StockMovement[]
+  debts          Debt[]
 
   @@index([organizationId])
 }
@@ -323,14 +416,10 @@ model Invoice {
   currencyCode String
   exchangeRate Decimal? @db.Decimal(18, 6)
 
-  // Notes affichées sur la facture
   notes         String?
-  // Conditions de paiement affichées sur la facture
   terms         String?
-  // Notes internes, non visibles par le client
   internalNotes String?
 
-  // Lien vers le devis d'origine si converti
   originQuoteId String?
   originQuote   Quote?  @relation("QuoteToInvoice", fields: [originQuoteId], references: [id])
 
@@ -342,7 +431,6 @@ model Invoice {
   items        InvoiceItem[]
   payments     Payment[]
 
-  // Numéro unique par organisation
   @@unique([organizationId, number])
   @@index([organizationId])
   @@index([clientId])
@@ -362,7 +450,6 @@ model InvoiceItem {
   total       Decimal @db.Decimal(18, 2)
   isService   Boolean @default(false)
 
-  // Relation vers TaxRate pour réutilisabilité
   taxRateId String?
   taxRate   TaxRate? @relation(fields: [taxRateId], references: [id])
 
@@ -380,6 +467,7 @@ enum PaymentMethod {
   MOBILE_MONEY
   CARD
   CHECK
+  CREDIT // vente à crédit → génère une Debt
   OTHER
 }
 
@@ -439,9 +527,7 @@ model Quote {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client?      @relation(fields: [clientId], references: [id])
   items        QuoteItem[]
-
-  // Factures générées depuis ce devis
-  invoices Invoice[] @relation("QuoteToInvoice")
+  invoices     Invoice[]    @relation("QuoteToInvoice")
 
   @@unique([organizationId, number])
   @@index([organizationId])
@@ -473,6 +559,302 @@ model QuoteItem {
 }
 
 // ============================================================
+// VENTES POS
+// ============================================================
+
+enum SaleStatus {
+  COMPLETED // vente finalisée
+  REFUNDED // remboursée intégralement
+  PARTIAL_REFUND // remboursement partiel
+  CANCELLED // annulée avant finalisation
+  ON_HOLD // mise en attente (client reviendra)
+}
+
+model Sale {
+  id             String  @id @default(uuid())
+  organizationId String
+  clientId       String? // null = client anonyme
+  cashSessionId  String? // session de caisse liée
+
+  number String
+  status SaleStatus @default(COMPLETED)
+
+  subtotal   Decimal @db.Decimal(18, 2)
+  taxTotal   Decimal @db.Decimal(18, 2)
+  total      Decimal @db.Decimal(18, 2)
+  amountPaid Decimal @db.Decimal(18, 2) // montant encaissé
+  change     Decimal @db.Decimal(18, 2) // rendu monnaie
+  discount   Decimal @default(0) @db.Decimal(18, 2) // remise globale
+
+  currencyCode String
+
+  // Pour restaurant
+  tableNumber String?
+  // Note caissier
+  note        String?
+
+  // Mode hors-ligne
+  isOffline Boolean @default(false)
+  offlineId String? // id local généré côté client avant sync
+
+  saleDate  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id])
+  cashSession  CashSession?  @relation(fields: [cashSessionId], references: [id])
+  items        SaleItem[]
+  payments     SalePayment[]
+  // Dette générée si paiement partiel
+  debt         Debt?
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([cashSessionId])
+  @@index([organizationId, saleDate])
+  @@index([status])
+  @@index([offlineId])
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  productId String?
+
+  name      String
+  quantity  Decimal  @db.Decimal(18, 2)
+  unitPrice Decimal  @db.Decimal(18, 2)
+  costPrice Decimal? @db.Decimal(18, 2) // snapshot prix achat au moment vente
+  discount  Decimal  @default(0) @db.Decimal(18, 2)
+  taxRate   Decimal  @default(0) @db.Decimal(5, 2)
+  total     Decimal  @db.Decimal(18, 2)
+
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model SalePayment {
+  id     String @id @default(uuid())
+  saleId String
+
+  method PaymentMethod
+  amount Decimal       @db.Decimal(18, 2)
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+// ============================================================
+// STOCK
+// ============================================================
+
+enum StockMovementType {
+  IN // entrée : achat fournisseur, retour client
+  OUT // sortie : vente, don
+  ADJUSTMENT // ajustement inventaire
+  LOSS // perte, casse, vol
+  TRANSFER // transfert entre sites (futur)
+}
+
+model StockMovement {
+  id             String  @id @default(uuid())
+  organizationId String
+  productId      String
+  vendorId       String?
+
+  type      StockMovementType
+  quantity  Decimal           @db.Decimal(18, 2) // toujours positif
+  direction Int               @default(1) // +1 entrée / -1 sortie
+
+  unitCost  Decimal? @db.Decimal(18, 2)
+  totalCost Decimal? @db.Decimal(18, 2)
+
+  // Référence source
+  referenceType String? // "SALE", "INVOICE", "INVENTORY", "MANUAL", "RECEPTION"
+  referenceId   String?
+
+  // Lot (pharmacie, alimentation)
+  batchNumber String?
+  expiryDate  DateTime?
+
+  note      String?
+  movedAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id])
+  vendor       Vendor?      @relation(fields: [vendorId], references: [id])
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([organizationId, movedAt])
+  @@index([referenceType, referenceId])
+}
+
+// ============================================================
+// INVENTAIRE
+// ============================================================
+
+enum InventoryStatus {
+  DRAFT // en cours de comptage
+  VALIDATED // validé — ajustements appliqués
+  CANCELLED
+}
+
+model Inventory {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name      String
+  status    InventoryStatus @default(DRAFT)
+  startedAt DateTime        @default(now())
+  closedAt  DateTime?
+  note      String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        InventoryItem[]
+
+  @@index([organizationId])
+}
+
+model InventoryItem {
+  id          String @id @default(uuid())
+  inventoryId String
+  productId   String
+
+  expectedQty Decimal @db.Decimal(18, 2) // stock théorique
+  countedQty  Decimal @db.Decimal(18, 2) // stock réel compté
+  variance    Decimal @db.Decimal(18, 2) // countedQty - expectedQty
+
+  note String?
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([inventoryId, productId])
+  @@index([inventoryId])
+}
+
+// ============================================================
+// SESSION DE CAISSE
+// ============================================================
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model CashSession {
+  id             String @id @default(uuid())
+  organizationId String
+  userId         String
+
+  status   CashSessionStatus @default(OPEN)
+  openedAt DateTime          @default(now())
+  closedAt DateTime?
+
+  openingBalance  Decimal  @db.Decimal(18, 2)
+  closingBalance  Decimal? @db.Decimal(18, 2)
+  expectedBalance Decimal? @db.Decimal(18, 2) // calculé auto
+  variance        Decimal? @db.Decimal(18, 2) // écart
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+  sales        Sale[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// ============================================================
+// CARNET DE DETTES
+// ============================================================
+
+enum DebtType {
+  CUSTOMER // crédit accordé à un client (il nous doit)
+  SUPPLIER // dette envers un fournisseur (on lui doit)
+}
+
+enum DebtStatus {
+  OPEN // dette active
+  PARTIAL // partiellement remboursée
+  SETTLED // soldée
+  CANCELLED // annulée
+}
+
+model Debt {
+  id             String   @id @default(uuid())
+  organizationId String
+  type           DebtType
+
+  // Lié à un client ou fournisseur enregistré
+  clientId String?
+  vendorId String?
+
+  // Ou juste un nom + téléphone (sans compte) — très courant terrain
+  contactName  String?
+  contactPhone String?
+
+  description  String? // note libre : "Riz 25kg + Huile"
+  amount       Decimal @db.Decimal(18, 2) // montant total de la dette
+  amountPaid   Decimal @default(0) @db.Decimal(18, 2) // déjà remboursé
+  currencyCode String  @default("XOF")
+
+  status  DebtStatus @default(OPEN)
+  dueDate DateTime? // échéance optionnelle
+
+  // Lien vers la vente ou réception qui a généré la dette
+  saleId String? @unique // une vente → au plus une dette
+  // note: pas de FK contrainte directe pour éviter la circularité,
+  // on gère via referenceType/referenceId si besoin
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?         @relation(fields: [clientId], references: [id])
+  vendor       Vendor?         @relation(fields: [vendorId], references: [id])
+  sale         Sale?           @relation(fields: [saleId], references: [id])
+  repayments   DebtRepayment[]
+
+  @@index([organizationId])
+  @@index([organizationId, type])
+  @@index([organizationId, status])
+  @@index([organizationId, type, status])
+  @@index([clientId])
+  @@index([vendorId])
+  @@index([dueDate])
+}
+
+model DebtRepayment {
+  id     String @id @default(uuid())
+  debtId String
+
+  amount Decimal       @db.Decimal(18, 2)
+  method PaymentMethod @default(CASH)
+  note   String?
+  paidAt DateTime      @default(now())
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId])
+}
+
+// ============================================================
 // DÉPENSES
 // ============================================================
 
@@ -480,12 +862,13 @@ model ExpenseCategory {
   id             String  @id @default(uuid())
   organizationId String
   name           String
-  color          String? // pour l'UI / graphiques
+  color          String?
 
   createdAt    DateTime     @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   expenses     Expense[]
 
+  @@unique([organizationId, name])
   @@index([organizationId])
 }
 
