@@ -5,35 +5,16 @@ import { headers } from "next/headers"
 import { auth } from "@/server/auth"
 import { prisma } from "@/server/db"
 import { z } from "zod"
-
-// ─── Schemas ──────────────────────────────────────────────────────────────────
-const productCategorySchema = z.object({
-    name: z.string().min(1).max(100),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-    icon: z.string().max(10).optional(),
-})
-
-const createProductSchema = z.object({
-    name: z.string().min(1, "Nom requis").max(255),
-    description: z.string().max(1000).optional(),
-    sku: z.string().max(100).optional(),
-    barcode: z.string().max(100).optional(),
-    categoryId: z.string().uuid().optional(),
-    price: z.number().min(0),
-    costPrice: z.number().min(0).optional(),
-    isService: z.boolean().default(false),
-    unit: z.string().max(20).default("pcs"),
-    initialStock: z.number().min(0).default(0),
-    minStockAlert: z.number().min(0).optional(),
-    isFavorite: z.boolean().default(false),
-})
-
-const updateProductSchema = createProductSchema.omit({ initialStock: true }).partial().extend({
-    name: z.string().min(1).max(255),
-    price: z.number().min(0),
-})
+import {
+    createProductCategorySchema,
+    createProductSchema,
+    updateProductSchema,
+} from "@/lib/validations/product.schema"
 
 type R<T = void> = { success: true; data: T } | { success: false; error: string }
+
+// ─── Alias local pour les schemas catégorie (utilisé dans upsert) ─────────────
+const productCategorySchema = createProductCategorySchema
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 async function getCtx(orgSlug: string) {
@@ -58,7 +39,7 @@ export async function upsertProductCategoryAction(
     categoryId?: string
 ): Promise<R<{ id: string; name: string; color: string | null; icon: string | null }>> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la création de la catégorie" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const parsed = productCategorySchema.safeParse(input)
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Invalide" }
 
@@ -77,7 +58,7 @@ export async function upsertProductCategoryAction(
 
 export async function deleteProductCategoryAction(orgSlug: string, categoryId: string): Promise<R> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la suppression de la catégorie" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const cat = await prisma.productCategory.findFirst({
         where: { id: categoryId, organizationId: ctx.org.id },
         include: { _count: { select: { products: true } } },
@@ -108,7 +89,7 @@ export async function createProductAction(
     input: z.infer<typeof createProductSchema>
 ): Promise<R<{ id: string; name: string }>> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la création du produit" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const parsed = createProductSchema.safeParse(input)
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Invalide" }
     const data = parsed.data
@@ -169,7 +150,7 @@ export async function updateProductAction(
     input: z.infer<typeof updateProductSchema>
 ): Promise<R<{ id: string }>> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la mise à jour du produit" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const existing = await prisma.product.findFirst({ where: { id: productId, organizationId: ctx.org.id } })
     if (!existing) return { success: false, error: "Produit introuvable" }
     const parsed = updateProductSchema.safeParse(input)
@@ -195,6 +176,7 @@ export async function updateProductAction(
             unit: data.unit,
             minStockAlert: data.minStockAlert ?? null,
             isFavorite: data.isFavorite ?? existing.isFavorite,
+            isActive: data.isActive ?? existing.isActive,
         },
     })
 
@@ -204,7 +186,7 @@ export async function updateProductAction(
 
 export async function toggleFavoriteAction(orgSlug: string, productId: string): Promise<R<{ isFavorite: boolean }>> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la mise à jour du produit" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const p = await prisma.product.findFirst({ where: { id: productId, organizationId: ctx.org.id } })
     if (!p) return { success: false, error: "Produit introuvable" }
     const updated = await prisma.product.update({ where: { id: productId }, data: { isFavorite: !p.isFavorite } })
@@ -213,7 +195,7 @@ export async function toggleFavoriteAction(orgSlug: string, productId: string): 
 
 export async function archiveProductAction(orgSlug: string, productId: string): Promise<R> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur lors de la mise à jour du produit" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const p = await prisma.product.findFirst({ where: { id: productId, organizationId: ctx.org.id } })
     if (!p) return { success: false, error: "Produit introuvable" }
     await prisma.product.update({ where: { id: productId }, data: { isActive: !p.isActive } })
@@ -267,4 +249,37 @@ export async function getProductByBarcodeAction(orgSlug: string, barcode: string
             category: p.category,
         },
     }
+}
+
+export async function deleteProductAction(
+    orgSlug: string,
+    productId: string
+): Promise<R> {
+    const ctx = await getCtx(orgSlug)
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
+    const { org } = ctx
+
+    const product = await prisma.product.findFirst({
+        where: { id: productId, organizationId: ctx.org.id },
+        include: {
+            _count: { select: { invoiceItems: true, quoteItems: true, saleItems: true } },
+        },
+    })
+    if (!product) return { success: false, error: "Produit introuvable" }
+
+    const usageCount =
+        product._count.invoiceItems +
+        product._count.quoteItems +
+        product._count.saleItems
+
+    if (usageCount > 0)
+        return {
+            success: false,
+            error: `Ce produit est utilisé dans ${usageCount} document(s). Archivez-le plutôt que de le supprimer.`,
+        }
+
+    await prisma.product.delete({ where: { id: productId } })
+
+    revalidatePath(`/${orgSlug}/products`)
+    return { success: true, data: undefined }
 }
