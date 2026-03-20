@@ -33,13 +33,42 @@ const UNITS = ["pcs", "kg", "g", "litre", "cl", "ml", "m", "cm", "carton", "sach
 const fmtN = (n: number) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n)
 const fmt = (n: number, cur: string) => `${fmtN(n)} ${cur}`
 
+// ─── Boutons d'action réutilisables ──────────────────────────────────────────
+function ActionButtons({
+    orgSlug, isPending, isEdit, onSave, router,
+    className = "",
+}: {
+    orgSlug: string; isPending: boolean; isEdit: boolean
+    onSave: () => void; router: ReturnType<typeof useRouter>
+    className?: string
+}) {
+    return (
+        <div className={`flex gap-3 ${className}`}>
+            <Button
+                variant="outline"
+                onClick={() => router.push(`/${orgSlug}/products`)}
+                disabled={isPending}
+                className="flex-1 sm:flex-none"
+            >
+                Annuler
+            </Button>
+            <Button onClick={onSave} disabled={isPending} className="flex-1 sm:flex-none gap-2">
+                {isPending
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement…</>
+                    : isEdit ? "✓ Enregistrer les modifications" : "✓ Créer le produit"
+                }
+            </Button>
+        </div>
+    )
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 export default function ProductFormClient({ orgSlug, currency, categories, mode, product }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const isEdit = mode === "edit"
 
-    // ─── State formulaire ──────────────────────────────────────────────────────
+    // ─── State formulaire ─────────────────────────────────────────────────────
     const [name, setName] = useState(product?.name ?? "")
     const [description, setDescription] = useState(product?.description ?? "")
     const [barcode, setBarcode] = useState(product?.barcode ?? "")
@@ -52,7 +81,7 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
     const [minStock, setMinStock] = useState<number | "">(product?.minStockAlert ?? "")
     const [globalError, setGlobalError] = useState<string | null>(null)
 
-    // ─── Scanner barcode ───────────────────────────────────────────────────────
+    // ─── Scanner barcode ──────────────────────────────────────────────────────
     const [scanOpen, setScanOpen] = useState(false)
     const [scanError, setScanError] = useState<string | null>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -60,7 +89,7 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
     const barcodeBuffer = useRef("")
     const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    // Lecteur USB desktop — intercepte frappe rapide terminée par Enter
+    // Lecteur USB desktop — frappe rapide terminée par Enter
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
             const tag = (e.target as HTMLElement).tagName
@@ -83,14 +112,18 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
         setScanError(null)
         setScanOpen(true)
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" },
+            })
             streamRef.current = stream
             if (videoRef.current) videoRef.current.srcObject = stream
 
             // @ts-ignore
             if ("BarcodeDetector" in window) {
                 // @ts-ignore
-                const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "qr_code", "code_128", "code_39", "upc_a"] })
+                const detector = new BarcodeDetector({
+                    formats: ["ean_13", "ean_8", "qr_code", "code_128", "code_39", "upc_a"],
+                })
                 const detect = async () => {
                     if (!videoRef.current) return
                     try {
@@ -119,13 +152,13 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
         setScanError(null)
     }
 
-    // ─── Calculs ───────────────────────────────────────────────────────────────
+    // ─── Calculs ──────────────────────────────────────────────────────────────
     const margin = Number(price) > 0 && Number(costPrice) > 0
         ? (((Number(price) - Number(costPrice)) / Number(price)) * 100).toFixed(1)
         : null
     const selectedCategory = categories.find(c => c.id === categoryId) ?? null
 
-    // ─── Submit ────────────────────────────────────────────────────────────────
+    // ─── Submit ───────────────────────────────────────────────────────────────
     function handleSave() {
         setGlobalError(null)
         if (!name.trim()) { setGlobalError("Le nom est requis."); return }
@@ -135,19 +168,24 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
         startTransition(async () => {
             if (isEdit && product) {
                 const result = await updateProductAction(orgSlug, product.id, {
-                    name, description: description || undefined,
+                    name,
+                    description: description || undefined,
                     barcode: barcode || undefined,
                     categoryId: categoryId || undefined,
-                    price: Number(price), costPrice: Number(costPrice) || undefined,
-                    isService, unit, minStockAlert: Number(minStock) || undefined,
+                    price: Number(price),
+                    costPrice: Number(costPrice) || undefined,
+                    isService, unit,
+                    minStockAlert: Number(minStock) || undefined,
                 })
                 if (!result.success) { setGlobalError(result.error); return }
             } else {
                 const result = await createProductAction(orgSlug, {
-                    name, description: description || undefined,
+                    name,
+                    description: description || undefined,
                     barcode: barcode || undefined,
                     categoryId: categoryId || undefined,
-                    price: Number(price), costPrice: Number(costPrice) || undefined,
+                    price: Number(price),
+                    costPrice: Number(costPrice) || undefined,
                     isService, unit,
                     initialStock: isService ? 0 : Number(initialStock),
                     minStockAlert: Number(minStock) || undefined,
@@ -160,7 +198,7 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // FORMULAIRE
+    // SECTION FORMULAIRE
     // ─────────────────────────────────────────────────────────────────────────
     const FormSection = (
         <div className="space-y-6">
@@ -193,9 +231,15 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
 
                     {/* Nom */}
                     <div className="space-y-2">
-                        <Label className="text-sm font-medium">Nom <span className="text-red-400">*</span></Label>
-                        <Input autoFocus value={name} onChange={e => setName(e.target.value)}
-                            placeholder="Ex : Riz 25kg, Eau minérale 1.5L…" />
+                        <Label className="text-sm font-medium">
+                            Nom <span className="text-red-400">*</span>
+                        </Label>
+                        <Input
+                            autoFocus
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            placeholder="Ex : Riz 25kg, Eau minérale 1.5L…"
+                        />
                     </div>
 
                     {/* Catégorie */}
@@ -212,7 +256,8 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                                     {categories.map(c => (
                                         <SelectItem key={c.id} value={c.id}>
                                             <span className="flex items-center gap-2">
-                                                {c.icon && <span>{c.icon}</span>}{c.name}
+                                                {c.icon && <span>{c.icon}</span>}
+                                                {c.name}
                                             </span>
                                         </SelectItem>
                                     ))}
@@ -224,8 +269,12 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                     {/* Description */}
                     <div className="space-y-2">
                         <Label className="text-sm font-medium text-zinc-500">Description (optionnel)</Label>
-                        <Textarea value={description} onChange={e => setDescription(e.target.value)}
-                            rows={2} placeholder="Détails supplémentaires…" />
+                        <Textarea
+                            value={description}
+                            onChange={e => setDescription(e.target.value)}
+                            rows={2}
+                            placeholder="Détails supplémentaires…"
+                        />
                     </div>
 
                     {/* Code-barres avec scan */}
@@ -255,7 +304,10 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                             <div className="flex items-center gap-2 rounded-lg bg-zinc-50 border border-zinc-100 px-3 py-2">
                                 <Barcode className="w-4 h-4 text-zinc-400 shrink-0" />
                                 <p className="text-sm font-mono text-zinc-700 flex-1">{barcode}</p>
-                                <button onClick={() => setBarcode("")} className="text-zinc-400 hover:text-red-500 transition-colors">
+                                <button
+                                    onClick={() => setBarcode("")}
+                                    className="text-zinc-400 hover:text-red-500 transition-colors"
+                                >
                                     <X className="w-3.5 h-3.5" />
                                 </button>
                             </div>
@@ -263,7 +315,6 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                         <p className="text-xs text-zinc-400">
                             Le SKU est généré automatiquement par le système.
                         </p>
-                        {/* SKU existant en mode édition */}
                         {isEdit && product?.sku && (
                             <p className="text-xs text-zinc-500 font-mono">
                                 SKU actuel : <strong>{product.sku}</strong>
@@ -281,21 +332,31 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                            <Label className="text-sm font-medium">Prix de vente <span className="text-red-400">*</span></Label>
+                            <Label className="text-sm font-medium">
+                                Prix de vente <span className="text-red-400">*</span>
+                            </Label>
                             <div className="relative">
-                                <Input type="number" min={0} value={price} placeholder="0"
+                                <Input
+                                    type="number" min={0} value={price} placeholder="0"
                                     onChange={e => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                                    className="pr-14" />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-medium">{currency}</span>
+                                    className="pr-14"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-medium">
+                                    {currency}
+                                </span>
                             </div>
                         </div>
                         <div className="space-y-2">
                             <Label className="text-sm font-medium text-zinc-500">Prix d'achat</Label>
                             <div className="relative">
-                                <Input type="number" min={0} value={costPrice} placeholder="0"
+                                <Input
+                                    type="number" min={0} value={costPrice} placeholder="0"
                                     onChange={e => setCostPrice(e.target.value === "" ? "" : Number(e.target.value))}
-                                    className="pr-14" />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-medium">{currency}</span>
+                                    className="pr-14"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-medium">
+                                    {currency}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -333,8 +394,10 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium text-zinc-500">Seuil alerte rupture</Label>
-                                <Input type="number" min={0} value={minStock} placeholder="Ex : 5"
-                                    onChange={e => setMinStock(e.target.value === "" ? "" : Number(e.target.value))} />
+                                <Input
+                                    type="number" min={0} value={minStock} placeholder="Ex : 5"
+                                    onChange={e => setMinStock(e.target.value === "" ? "" : Number(e.target.value))}
+                                />
                             </div>
                         </div>
 
@@ -342,21 +405,30 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Stock initial</Label>
                                 <div className="relative">
-                                    <Input type="number" min={0} value={initialStock} placeholder="0"
+                                    <Input
+                                        type="number" min={0} value={initialStock} placeholder="0"
                                         onChange={e => setInitialStock(e.target.value === "" ? "" : Number(e.target.value))}
-                                        className="pr-12" />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400">{unit}</span>
+                                        className="pr-12"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
+                                        {unit}
+                                    </span>
                                 </div>
-                                <p className="text-xs text-zinc-400">Un mouvement d'entrée de stock sera créé automatiquement.</p>
+                                <p className="text-xs text-zinc-400">
+                                    Un mouvement d'entrée de stock sera créé automatiquement.
+                                </p>
                             </div>
                         )}
 
                         {isEdit && product && (
                             <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-4 py-3 flex items-center justify-between">
                                 <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Stock actuel</p>
+                                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                                        Stock actuel
+                                    </p>
                                     <p className="text-xl font-black text-zinc-900 mt-0.5 tabular-nums">
-                                        {product.currentStock} <span className="text-sm font-normal text-zinc-400">{unit}</span>
+                                        {product.currentStock}{" "}
+                                        <span className="text-sm font-normal text-zinc-400">{unit}</span>
                                     </p>
                                 </div>
                                 <p className="text-xs text-zinc-400 text-right max-w-[160px]">
@@ -371,14 +443,19 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
     )
 
     // ─────────────────────────────────────────────────────────────────────────
-    // APERÇU
+    // SECTION APERÇU
     // ─────────────────────────────────────────────────────────────────────────
     const PreviewSection = (
-        <Card className="rounded-2xl h-fit sticky top-20">
+        // Pas de sticky — h-fit uniquement
+        <Card className="rounded-2xl h-fit">
             <CardContent className="p-6 space-y-5">
+
+                {/* En-tête */}
                 <div className="flex items-start gap-4">
-                    <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-                        style={{ background: selectedCategory?.color ? selectedCategory.color + "22" : "#f4f4f5" }}>
+                    <div
+                        className="h-14 w-14 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+                        style={{ background: selectedCategory?.color ? selectedCategory.color + "22" : "#f4f4f5" }}
+                    >
                         {selectedCategory?.icon ?? (isService ? "⚙️" : "📦")}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -386,37 +463,55 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                             {name || <span className="text-zinc-300">Nom du produit</span>}
                         </p>
                         {selectedCategory && (
-                            <span className="text-xs rounded-full px-2.5 py-1 mt-1.5 inline-block font-medium"
-                                style={{ background: (selectedCategory.color ?? "#888") + "22", color: selectedCategory.color ?? "#666" }}>
+                            <span
+                                className="text-xs rounded-full px-2.5 py-1 mt-1.5 inline-block font-medium"
+                                style={{
+                                    background: (selectedCategory.color ?? "#888") + "22",
+                                    color: selectedCategory.color ?? "#666",
+                                }}
+                            >
                                 {selectedCategory.icon && <span className="mr-1">{selectedCategory.icon}</span>}
                                 {selectedCategory.name}
                             </span>
                         )}
                     </div>
-                    <Badge variant="outline" className={`rounded-full text-xs shrink-0 ${isService ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-zinc-50 text-zinc-600 border-zinc-200"
-                        }`}>
+                    <Badge
+                        variant="outline"
+                        className={`rounded-full text-xs shrink-0 ${isService
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-zinc-50 text-zinc-600 border-zinc-200"
+                            }`}
+                    >
                         {isService ? "Service" : "Produit"}
                     </Badge>
                 </div>
 
                 {description && (
-                    <p className="text-sm text-zinc-500 leading-relaxed border-t border-zinc-100 pt-4">{description}</p>
+                    <p className="text-sm text-zinc-500 leading-relaxed border-t border-zinc-100 pt-4">
+                        {description}
+                    </p>
                 )}
 
                 <div className="border-t border-zinc-100" />
 
+                {/* Prix */}
                 <div className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Prix</p>
                     <div className="flex items-baseline justify-between">
                         <span className="text-sm text-zinc-500">Prix de vente</span>
                         <span className="font-black text-zinc-900 text-xl tabular-nums">
-                            {Number(price) > 0 ? fmt(Number(price), currency) : <span className="text-zinc-300 text-base">—</span>}
+                            {Number(price) > 0
+                                ? fmt(Number(price), currency)
+                                : <span className="text-zinc-300 text-base">—</span>
+                            }
                         </span>
                     </div>
                     {Number(costPrice) > 0 && (
                         <div className="flex items-baseline justify-between">
                             <span className="text-sm text-zinc-500">Prix d'achat</span>
-                            <span className="text-sm text-zinc-600 tabular-nums">{fmt(Number(costPrice), currency)}</span>
+                            <span className="text-sm text-zinc-600 tabular-nums">
+                                {fmt(Number(costPrice), currency)}
+                            </span>
                         </div>
                     )}
                     {margin && (
@@ -427,6 +522,7 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                     )}
                 </div>
 
+                {/* Stock */}
                 {!isService && (
                     <>
                         <div className="border-t border-zinc-100" />
@@ -437,7 +533,8 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                                     <div className="rounded-xl bg-zinc-50 border border-zinc-100 px-3 py-2.5">
                                         <p className="text-xs text-zinc-400 mb-0.5">Stock initial</p>
                                         <p className="font-bold text-zinc-900 tabular-nums">
-                                            {Number(initialStock) || 0} <span className="text-zinc-400 font-normal text-xs">{unit}</span>
+                                            {Number(initialStock) || 0}{" "}
+                                            <span className="text-zinc-400 font-normal text-xs">{unit}</span>
                                         </p>
                                     </div>
                                 )}
@@ -445,7 +542,8 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                                     <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
                                         <p className="text-xs text-amber-500 mb-0.5">Alerte rupture</p>
                                         <p className="font-bold text-amber-700 tabular-nums">
-                                            {Number(minStock)} <span className="text-amber-500 font-normal text-xs">{unit}</span>
+                                            {Number(minStock)}{" "}
+                                            <span className="text-amber-500 font-normal text-xs">{unit}</span>
                                         </p>
                                     </div>
                                 )}
@@ -454,11 +552,14 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                     </>
                 )}
 
+                {/* Code-barres */}
                 {barcode && (
                     <>
                         <div className="border-t border-zinc-100" />
                         <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Code-barres</p>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                                Code-barres
+                            </p>
                             <p className="text-xs text-zinc-600 font-mono flex items-center gap-1.5">
                                 <Barcode className="w-3 h-3" /> {barcode}
                             </p>
@@ -471,15 +572,17 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
     )
 
     // ─────────────────────────────────────────────────────────────────────────
-    // RENDU
+    // RENDU PRINCIPAL
     // ─────────────────────────────────────────────────────────────────────────
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 md:pb-8">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-8">
 
             {/* Header */}
             <div className="flex items-center gap-3 mb-6 flex-wrap">
-                <button onClick={() => router.push(`/${orgSlug}/products`)}
-                    className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 transition-colors">
+                <button
+                    onClick={() => router.push(`/${orgSlug}/products`)}
+                    className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 transition-colors"
+                >
                     <ArrowLeft className="w-4 h-4" /> Produits
                 </button>
                 <span className="text-zinc-300">/</span>
@@ -493,46 +596,46 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                 )}
             </div>
 
-            {/* Desktop : 2 colonnes */}
+            {/* ── Desktop : formulaire gauche + aperçu + boutons droite ──── */}
             <div className="hidden md:grid md:grid-cols-2 gap-8 items-start">
                 {FormSection}
                 <div className="flex flex-col gap-4">
                     {PreviewSection}
-                    <div className="flex gap-3 justify-end">
-                        <Button variant="outline" onClick={() => router.push(`/${orgSlug}/products`)} disabled={isPending}>
-                            Annuler
-                        </Button>
-                        <Button onClick={handleSave} disabled={isPending} className="gap-2">
-                            {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                            {isEdit ? "✓ Enregistrer les modifications" : "✓ Créer le produit"}
-                        </Button>
-                    </div>
+                    <ActionButtons
+                        orgSlug={orgSlug} isPending={isPending} isEdit={isEdit}
+                        onSave={handleSave} router={router}
+                        className="justify-end"
+                    />
                 </div>
             </div>
 
-            {/* Mobile : onglets */}
+            {/* ── Mobile : onglets avec boutons dans chaque onglet ──────── */}
             <div className="md:hidden">
                 <Tabs defaultValue="form">
                     <TabsList className="grid grid-cols-2 mb-4">
                         <TabsTrigger value="form">Formulaire</TabsTrigger>
                         <TabsTrigger value="preview">Aperçu</TabsTrigger>
                     </TabsList>
-                    <TabsContent value="form">{FormSection}</TabsContent>
-                    <TabsContent value="preview">{PreviewSection}</TabsContent>
+
+                    <TabsContent value="form" className="space-y-6">
+                        {FormSection}
+                        <ActionButtons
+                            orgSlug={orgSlug} isPending={isPending} isEdit={isEdit}
+                            onSave={handleSave} router={router}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="preview" className="space-y-6">
+                        {PreviewSection}
+                        <ActionButtons
+                            orgSlug={orgSlug} isPending={isPending} isEdit={isEdit}
+                            onSave={handleSave} router={router}
+                        />
+                    </TabsContent>
                 </Tabs>
             </div>
 
-            {/* Boutons sticky mobile */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-zinc-200 px-4 py-3 flex gap-3">
-                <Button variant="outline" onClick={() => router.push(`/${orgSlug}/products`)} disabled={isPending} className="flex-1">
-                    Annuler
-                </Button>
-                <Button onClick={handleSave} disabled={isPending} className="flex-1 gap-2">
-                    {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement…</> : isEdit ? "✓ Enregistrer" : "✓ Créer"}
-                </Button>
-            </div>
-
-            {/* ── Modal scanner caméra ─────────────────────────────────────────── */}
+            {/* ── Modal scanner caméra ──────────────────────────────────── */}
             <Dialog open={scanOpen} onOpenChange={open => !open && stopScan()}>
                 <DialogContent className="max-w-sm p-0 overflow-hidden rounded-2xl">
                     <DialogHeader className="px-5 pt-5 pb-3">
@@ -542,7 +645,11 @@ export default function ProductFormClient({ orgSlug, currency, categories, mode,
                     </DialogHeader>
 
                     <div className="relative bg-black aspect-video w-full">
-                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                        <video
+                            ref={videoRef}
+                            autoPlay playsInline muted
+                            className="w-full h-full object-cover"
+                        />
                         {/* Viseur */}
                         <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-56 h-32 relative">
