@@ -418,7 +418,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                             {/* Viseur */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-48 h-24 relative">
+                                <div className="w-48 h-16 relative">
                                     <div className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-white rounded-tl-lg" />
                                     <div className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-white rounded-tr-lg" />
                                     <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-white rounded-bl-lg" />
@@ -653,9 +653,9 @@ function ProductTile({
 
             {!p.isService && (
                 <p className={`text-xs mt-0.5 ${outOfStock ? "text-red-400 font-semibold"
-                        : p.minStockAlert && p.currentStock <= p.minStockAlert ? "text-amber-500"
-                            : isInCart ? "text-emerald-600"
-                                : "text-zinc-400"
+                    : p.minStockAlert && p.currentStock <= p.minStockAlert ? "text-amber-500"
+                        : isInCart ? "text-emerald-600"
+                            : "text-zinc-400"
                     }`}>
                     {outOfStock ? "Rupture" : `${p.currentStock} ${p.unit ?? "pcs"}`}
                 </p>
