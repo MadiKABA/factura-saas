@@ -113,8 +113,11 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                     if (!videoRef.current) return
                     try {
                         const codes = await detector.detect(videoRef.current)
-                        if (codes.length > 0) { stopScan(); handleBarcodeDetected(codes[0].rawValue) }
-                        else requestAnimationFrame(detect)
+                        if (codes.length > 0) {
+                            handleBarcodeDetected(codes[0].rawValue)
+                            // Pause courte puis reprend le scan
+                            setTimeout(() => requestAnimationFrame(detect), 800)
+                        } else requestAnimationFrame(detect)
                     } catch { requestAnimationFrame(detect) }
                 }
                 videoRef.current?.addEventListener("playing", detect, { once: true })
@@ -418,7 +421,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                             {/* Viseur */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-48 h-16 relative">
+                                <div className="w-48 h-24 relative">
                                     <div className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-white rounded-tl-lg" />
                                     <div className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-white rounded-tr-lg" />
                                     <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-white rounded-bl-lg" />
@@ -472,9 +475,15 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                         </div>
                         {/* Lignes */}
                         {cart.map((item, i) => (
-                            <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-50 last:border-0">
-                                <p className="flex-1 text-sm font-semibold text-zinc-900 truncate leading-tight">{item.name}</p>
-                                <p className="text-xs text-zinc-400 shrink-0 w-14 text-right tabular-nums">{fmtNum(item.price)}</p>
+                            <div key={i} className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-50 last:border-0">
+                                {/* Bouton supprimer */}
+                                <button
+                                    onClick={() => removeItem(i)}
+                                    className="shrink-0 h-6 w-6 rounded-full bg-red-50 text-red-400 flex items-center justify-center text-sm active:scale-90 transition-transform hover:bg-red-100"
+                                >
+                                    ×
+                                </button>
+                                <p className="flex-1 text-sm font-semibold text-zinc-900 truncate leading-tight min-w-0">{item.name}</p>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                     <button onClick={() => updateQty(i, -1)}
                                         className="h-7 w-7 rounded-full bg-zinc-100 text-zinc-700 font-bold text-base flex items-center justify-center active:scale-90 transition-transform">
