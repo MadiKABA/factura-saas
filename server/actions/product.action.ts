@@ -29,6 +29,36 @@ async function getCtx(orgSlug: string) {
     return { session, org } as const
 }
 
+
+// ─── Générateur SKU automatique ───────────────────────────────────────────────
+async function generateSKU(organizationId: string, name: string): Promise<string> {
+    // Préfixe = 3 premières lettres du nom, majuscules, sans accents
+    const prefix = name
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // retirer accents
+        .replace(/[^a-zA-Z0-9]/g, "")                      // retirer caractères spéciaux
+        .substring(0, 3)
+        .toUpperCase()
+        .padEnd(3, "X")                                     // compléter si < 3 chars
+
+    // Compter les produits avec ce préfixe pour ce séquençage
+    const count = await prisma.product.count({
+        where: { organizationId, sku: { startsWith: prefix } },
+    })
+
+    const seq = String(count + 1).padStart(4, "0")
+    const candidate = `${prefix}-${seq}`
+
+    // Vérifier unicité (collision rare mais possible)
+    const exists = await prisma.product.findFirst({
+        where: { organizationId, sku: candidate },
+    })
+    if (exists) {
+        // Fallback : timestamp court
+        return `${prefix}-${Date.now().toString(36).toUpperCase().slice(-4)}`
+    }
+    return candidate
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // CATÉGORIES
 // ══════════════════════════════════════════════════════════════════════════════
@@ -72,7 +102,7 @@ export async function deleteProductCategoryAction(orgSlug: string, categoryId: s
 
 export async function getProductCategoriesAction(orgSlug: string) {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const cats = await prisma.productCategory.findMany({
         where: { organizationId: ctx.org.id },
         orderBy: { name: "asc" },
@@ -94,10 +124,9 @@ export async function createProductAction(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Invalide" }
     const data = parsed.data
 
-    if (data.sku) {
-        const dup = await prisma.product.findFirst({ where: { organizationId: ctx.org.id, sku: data.sku } })
-        if (dup) return { success: false, error: `SKU "${data.sku}" déjà utilisé.` }
-    }
+    // SKU généré automatiquement côté serveur si non fourni
+    const sku = await generateSKU(ctx.org.id, data.name)
+
     if (data.barcode) {
         const dup = await prisma.product.findFirst({ where: { organizationId: ctx.org.id, barcode: data.barcode } })
         if (dup) return { success: false, error: `Code-barres "${data.barcode}" déjà utilisé.` }
@@ -109,7 +138,7 @@ export async function createProductAction(
                 organizationId: ctx.org.id,
                 name: data.name,
                 description: data.description || null,
-                sku: data.sku || null,
+                sku: sku,
                 barcode: data.barcode || null,
                 categoryId: data.categoryId || null,
                 price: data.price,
@@ -204,7 +233,7 @@ export async function archiveProductAction(orgSlug: string, productId: string): 
 
 export async function getProductsForPOSAction(orgSlug: string) {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
 
     const products = await prisma.product.findMany({
         where: { organizationId: ctx.org.id, isActive: true },
@@ -233,7 +262,7 @@ export async function getProductsForPOSAction(orgSlug: string) {
 
 export async function getProductByBarcodeAction(orgSlug: string, barcode: string) {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
     const p = await prisma.product.findFirst({
         where: { organizationId: ctx.org.id, barcode, isActive: true },
         include: { category: true },
@@ -257,7 +286,6 @@ export async function deleteProductAction(
 ): Promise<R> {
     const ctx = await getCtx(orgSlug)
     if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur inconnue" }
-    const { org } = ctx
 
     const product = await prisma.product.findFirst({
         where: { id: productId, organizationId: ctx.org.id },
