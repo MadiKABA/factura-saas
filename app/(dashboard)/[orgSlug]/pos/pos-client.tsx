@@ -246,116 +246,179 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // ENCAISSEMENT
+    // ENCAISSEMENT — modal sheet (pas plein écran)
     // ═══════════════════════════════════════════════════════════════════════════
-    if (checkoutOpen) {
-        return (
-            <div className="fixed inset-0 bg-zinc-950 z-50 flex flex-col">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-                    <button onClick={() => setCheckoutOpen(false)} className="text-zinc-400 text-sm">← Retour</button>
-                    <p className="text-white font-bold text-lg">Encaissement</p>
-                    <div className="w-16" />
+    const CheckoutSheet = checkoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCheckoutOpen(false)} />
+
+            {/* Sheet */}
+            <div className="relative z-10 w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+                style={{ maxHeight: "92vh" }}>
+
+                {/* Handle mobile */}
+                <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
+                    <div className="h-1 w-10 rounded-full bg-zinc-200" />
                 </div>
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-                    <div className="text-center py-4">
-                        <p className="text-zinc-400 text-sm uppercase tracking-widest mb-1">À payer</p>
-                        <p className="text-5xl font-black text-white tabular-nums">{fmtNum(total)}</p>
-                        <p className="text-zinc-500 text-lg mt-1">{org.currency}</p>
+
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 shrink-0">
+                    <div>
+                        <p className="font-black text-zinc-900 text-lg">Encaissement</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">{cart.length} article{cart.length > 1 ? "s" : ""}</p>
                     </div>
+                    <button onClick={() => setCheckoutOpen(false)}
+                        className="h-8 w-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 hover:bg-zinc-200 transition-colors">
+                        ✕
+                    </button>
+                </div>
+
+                {/* Contenu scrollable */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+
+                    {/* Total à payer */}
+                    <div className="rounded-2xl bg-zinc-900 px-5 py-4 flex items-center justify-between">
+                        <p className="text-zinc-400 text-sm">Total à payer</p>
+                        <p className="text-2xl font-black text-white tabular-nums">{fmt(total, org.currency)}</p>
+                    </div>
+
+                    {/* Mode de paiement */}
                     <div className="space-y-2">
-                        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">Mode de paiement</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Mode de paiement</p>
                         <div className="grid grid-cols-2 gap-2">
                             {Object.entries(PAYMENT_LABELS).map(([method, label]) => {
                                 const active = payments[0].method === method && !splitMode
                                 return (
-                                    <button key={method} onClick={() => { setSplitMode(false); setPayments([{ method, amount: total }]); setAmountInput(String(total)) }}
-                                        className={`rounded-2xl border-2 py-3 text-sm font-semibold transition-all active:scale-95 ${active ? "border-white bg-white text-zinc-900" : "border-zinc-700 text-zinc-300"}`}>
+                                    <button key={method}
+                                        onClick={() => { setSplitMode(false); setPayments([{ method, amount: total }]); setAmountInput(String(total)) }}
+                                        className={`rounded-xl border-2 py-2.5 text-sm font-semibold transition-all active:scale-95 ${active
+                                            ? "border-zinc-900 bg-zinc-900 text-white"
+                                            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
+                                            }`}>
                                         {label}
                                     </button>
                                 )
                             })}
                         </div>
                         <button onClick={() => setSplitMode(!splitMode)}
-                            className={`w-full rounded-2xl border-2 py-3 text-sm font-semibold transition-all ${splitMode ? "border-violet-400 text-violet-300" : "border-zinc-700 text-zinc-400"}`}>
+                            className={`w-full rounded-xl border-2 py-2.5 text-sm font-semibold transition-all ${splitMode ? "border-violet-500 bg-violet-50 text-violet-700" : "border-zinc-200 text-zinc-500 hover:border-zinc-300"
+                                }`}>
                             ✂️ Paiement mixte
                         </button>
                     </div>
+
+                    {/* Split paiement */}
                     {splitMode && (
-                        <div className="space-y-2 rounded-2xl border border-zinc-700 p-4">
-                            <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Répartition</p>
+                        <div className="space-y-2 rounded-xl border border-zinc-200 p-3 bg-zinc-50">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Répartition</p>
                             {payments.map((p, i) => (
                                 <div key={i} className="flex items-center gap-2">
-                                    <select value={p.method} onChange={e => { const u = [...payments]; u[i].method = e.target.value; setPayments(u) }} className="bg-zinc-800 text-white rounded-xl px-3 py-2 text-sm flex-1 border border-zinc-700">
+                                    <select value={p.method} onChange={e => { const u = [...payments]; u[i].method = e.target.value; setPayments(u) }}
+                                        className="flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm bg-white text-zinc-800">
                                         {Object.entries(PAYMENT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                                     </select>
-                                    <input type="number" value={p.amount || ""} onChange={e => { const u = [...payments]; u[i].amount = Number(e.target.value); setPayments(u) }} className="bg-zinc-800 text-white rounded-xl px-3 py-2 text-sm w-28 text-right border border-zinc-700" placeholder="Montant" />
-                                    {i > 0 && <button onClick={() => setPayments(payments.filter((_, j) => j !== i))} className="text-red-400 text-lg px-1">×</button>}
+                                    <input type="number" value={p.amount || ""} onChange={e => { const u = [...payments]; u[i].amount = Number(e.target.value); setPayments(u) }}
+                                        className="w-28 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-right bg-white" placeholder="Montant" />
+                                    {i > 0 && <button onClick={() => setPayments(payments.filter((_, j) => j !== i))} className="text-red-400 text-lg">×</button>}
                                 </div>
                             ))}
-                            <button onClick={() => setPayments([...payments, { method: "MOBILE_MONEY", amount: 0 }])} className="text-sm text-violet-400 mt-1">+ Ajouter</button>
-                            <div className="flex justify-between text-sm pt-2 border-t border-zinc-700">
-                                <span className="text-zinc-400">Total saisi</span>
-                                <span className={`font-bold ${payments.reduce((s, p) => s + p.amount, 0) >= total ? "text-emerald-400" : "text-red-400"}`}>{fmtNum(payments.reduce((s, p) => s + p.amount, 0))} {org.currency}</span>
+                            <button onClick={() => setPayments([...payments, { method: "MOBILE_MONEY", amount: 0 }])}
+                                className="text-xs text-violet-600 font-medium">+ Ajouter un mode</button>
+                            <div className="flex justify-between text-sm pt-2 border-t border-zinc-200">
+                                <span className="text-zinc-500">Total saisi</span>
+                                <span className={`font-bold ${payments.reduce((s, p) => s + p.amount, 0) >= total ? "text-emerald-600" : "text-red-500"}`}>
+                                    {fmt(payments.reduce((s, p) => s + p.amount, 0), org.currency)}
+                                </span>
                             </div>
                         </div>
                     )}
+
+                    {/* Montant reçu — simple champ de saisie */}
                     {!splitMode && payments[0].method !== "CREDIT" && (
                         <div className="space-y-3">
-                            <p className="text-zinc-400 text-xs uppercase tracking-wider">Montant reçu</p>
-                            <div className="bg-zinc-900 rounded-2xl border border-zinc-700 px-5 py-4 text-right">
-                                <p className="text-3xl font-black text-white tabular-nums">{amountInput || "0"} <span className="text-zinc-500 text-lg">{org.currency}</span></p>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                                    Montant reçu
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        autoFocus
+                                        value={amountInput}
+                                        onChange={e => setAmountInput(e.target.value)}
+                                        placeholder={String(total)}
+                                        className="w-full rounded-xl border-2 border-zinc-200 px-4 py-3.5 text-xl font-black text-zinc-900 text-right tabular-nums focus:border-zinc-900 focus:outline-none pr-20 transition-colors"
+                                    />
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-zinc-400 font-medium">
+                                        {org.currency}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "000", "0", "⌫"].map(k => (
-                                    <button key={k} onClick={() => k === "⌫" ? setAmountInput(p => p.slice(0, -1)) : setAmountInput(p => (p === "0" ? "" : p) + k)}
-                                        className="rounded-2xl bg-zinc-800 border border-zinc-700 py-4 text-white text-xl font-bold active:scale-95 transition-transform hover:bg-zinc-700">{k}</button>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-4 gap-2">
-                                {[500, 1000, 2000, 5000].map(n => (
-                                    <button key={n} onClick={() => addQuickAmount(n)} className="rounded-xl bg-zinc-800 border border-zinc-700 py-2.5 text-zinc-300 text-sm font-semibold active:scale-95 transition-transform">{fmtNum(n)}</button>
-                                ))}
-                            </div>
-                            {amountPaid >= total && (
-                                <div className="rounded-2xl bg-emerald-900/40 border border-emerald-700 px-5 py-4 text-center">
-                                    <p className="text-emerald-400 text-sm uppercase tracking-wider">Rendu monnaie</p>
-                                    <p className="text-3xl font-black text-emerald-300 mt-1">{fmtNum(change)} {org.currency}</p>
+
+                            {/* Rendu monnaie */}
+                            {amountPaid > 0 && amountPaid >= total && (
+                                <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-emerald-700">Rendu monnaie</p>
+                                    <p className="text-xl font-black text-emerald-700 tabular-nums">{fmt(change, org.currency)}</p>
+                                </div>
+                            )}
+                            {amountPaid > 0 && amountPaid < total && (
+                                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-red-600">Reste à payer</p>
+                                    <p className="text-xl font-black text-red-600 tabular-nums">{fmt(total - amountPaid, org.currency)}</p>
                                 </div>
                             )}
                         </div>
                     )}
-                    <div className="space-y-2">
-                        <p className="text-zinc-400 text-xs uppercase tracking-wider">Client (optionnel)</p>
-                        <select value={selectedClient} onChange={e => { setSelectedClient(e.target.value); const c = clients.find(cl => cl.id === e.target.value); if (c) { setDebtName(c.name); setDebtPhone(c.phone ?? "") } }}
-                            className="w-full bg-zinc-800 text-white rounded-2xl px-4 py-3 text-sm border border-zinc-700">
+
+                    {/* Client */}
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Client (optionnel)</p>
+                        <select value={selectedClient}
+                            onChange={e => { setSelectedClient(e.target.value); const c = clients.find(cl => cl.id === e.target.value); if (c) { setDebtName(c.name); setDebtPhone(c.phone ?? "") } }}
+                            className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm bg-white text-zinc-800">
                             <option value="">Anonyme</option>
                             {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>)}
                         </select>
                     </div>
+
+                    {/* Infos dette si crédit */}
                     {(payments[0].method === "CREDIT" || payments.some(p => p.method === "CREDIT")) && (
-                        <div className="rounded-2xl border border-amber-700 bg-amber-900/20 p-4 space-y-3">
-                            <p className="text-amber-400 text-xs uppercase tracking-wider font-semibold">📒 Informations dette</p>
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">📒 Informations dette</p>
                             {!selectedClient && (
                                 <>
-                                    <input value={debtName} onChange={e => setDebtName(e.target.value)} placeholder="Nom du client *" className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700" />
-                                    <input value={debtPhone} onChange={e => setDebtPhone(e.target.value)} placeholder="Téléphone" className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700" />
+                                    <input value={debtName} onChange={e => setDebtName(e.target.value)} placeholder="Nom du client *"
+                                        className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm bg-white" />
+                                    <input value={debtPhone} onChange={e => setDebtPhone(e.target.value)} placeholder="Téléphone"
+                                        className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm bg-white" />
                                 </>
                             )}
-                            <input type="date" value={debtDue} onChange={e => setDebtDue(e.target.value)} className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 text-sm border border-zinc-700" />
-                            <p className="text-amber-400/70 text-xs">Laissez vide si pas d'échéance.</p>
+                            <input type="date" value={debtDue} onChange={e => setDebtDue(e.target.value)}
+                                className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm bg-white" />
+                            <p className="text-xs text-amber-600/70">Laissez vide si pas d'échéance.</p>
                         </div>
                     )}
-                    {saleError && <div className="rounded-2xl bg-red-900/30 border border-red-700 px-4 py-3 text-red-400 text-sm">⚠ {saleError}</div>}
+
+                    {saleError && (
+                        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+                            ⚠ {saleError}
+                        </div>
+                    )}
                 </div>
-                <div className="p-5 border-t border-zinc-800">
+
+                {/* Bouton confirmer */}
+                <div className="shrink-0 px-5 py-4 border-t border-zinc-100">
                     <button onClick={handleConfirmSale} disabled={isPending || cart.length === 0}
-                        className="w-full rounded-2xl bg-emerald-500 py-5 text-white font-black text-xl active:scale-95 transition-all disabled:opacity-50">
-                        {isPending ? "Enregistrement…" : `✓ ENCAISSER ${fmt(total, org.currency)}`}
+                        className="w-full rounded-2xl bg-emerald-500 py-4 text-white font-black text-lg active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                        {isPending ? "Enregistrement…" : `✓ Encaisser ${fmt(total, org.currency)}`}
                     </button>
                 </div>
             </div>
-        )
-    }
+        </div>
+    )
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PANIER DESKTOP (sidebar)
@@ -405,6 +468,9 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     // ═══════════════════════════════════════════════════════════════════════════
     return (
         <div className="flex h-screen overflow-hidden bg-zinc-50">
+
+            {/* Modal encaissement */}
+            {CheckoutSheet}
 
             {/* ════════════════════════════════════════════════
           MOBILE — wireframe : scanner | panier | grille | boutons
