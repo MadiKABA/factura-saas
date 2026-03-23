@@ -13,7 +13,6 @@ import { useCurrentOrg, useCurrentPlan, useHasRole, useIsActive } from "@/compon
 type NavItem = { href: string; label: string; icon: React.ElementType }
 type NavGroup = { label: string; items: NavItem[] }
 
-// ─── Dashboard (commun) ───────────────────────────────────────────────────────
 const NAV_COMMON: NavItem[] = [
     { href: "", label: "Dashboard", icon: LayoutDashboard },
 ]
@@ -21,18 +20,18 @@ const NAV_COMMON: NavItem[] = [
 // ─── BUSINESS ────────────────────────────────────────────────────────────────
 const NAV_BUSINESS_GROUPS: NavGroup[] = [
     {
+        label: "Vente",
+        items: [
+            { href: "/pos", label: "Caisse", icon: Store },
+            { href: "/sales", label: "Ventes", icon: ShoppingCart },
+            { href: "/debts", label: "Dettes", icon: BookOpen },
+        ],
+    },
+    {
         label: "Facturation",
         items: [
             { href: "/invoices", label: "Factures", icon: FileText },
             { href: "/quotes", label: "Devis", icon: ClipboardList },
-            //{ href: "/expenses", label: "Dépenses", icon: Wallet },
-        ],
-    },
-    {
-        label: "Vente & Dettes",
-        items: [
-            { href: "/pos", label: "Ventes", icon: ShoppingCart },
-            { href: "/debts", label: "Dettes", icon: BookOpen },
         ],
     },
     {
@@ -72,7 +71,6 @@ const NAV_COMMERCE_GROUPS: NavGroup[] = [
     },
 ]
 
-// ─── Admin ────────────────────────────────────────────────────────────────────
 const ADMIN_ITEMS: NavItem[] = [
     { href: "/settings", label: "Paramètres", icon: Settings },
     { href: "/members", label: "Membres", icon: UserCog },
@@ -94,7 +92,6 @@ export function SidebarContent() {
     const isCommerce = orgType !== "BUSINESS"
     const navGroups = isCommerce ? NAV_COMMERCE_GROUPS : NAV_BUSINESS_GROUPS
 
-    // ─── Composant lien nav ────────────────────────────────────────────────
     function NavLink({ item }: { item: NavItem }) {
         const href = `${base}${item.href}`
         const active = item.href === ""
@@ -106,8 +103,8 @@ export function SidebarContent() {
                 title={isCollapsed ? item.label : ""}
                 onClick={() => setIsMobileOpen(false)}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${active
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
                     }`}
             >
                 <item.icon size={18} className="shrink-0" />
@@ -118,7 +115,7 @@ export function SidebarContent() {
 
     return (
         <>
-            {/* ── Bouton Mobile ──────────────────────────────────────────── */}
+            {/* Bouton Mobile */}
             <div className="fixed top-4 left-4 z-50 md:hidden">
                 <button
                     onClick={() => setIsMobileOpen(!isMobileOpen)}
@@ -128,7 +125,7 @@ export function SidebarContent() {
                 </button>
             </div>
 
-            {/* ── Sidebar ────────────────────────────────────────────────── */}
+            {/* Sidebar */}
             <aside className={`
                 fixed inset-y-0 left-0 z-40 bg-white border-r border-zinc-200
                 transition-all duration-300 ease-in-out flex flex-col
@@ -218,9 +215,7 @@ export function SidebarContent() {
                             }`}>
                             {!isCollapsed ? (
                                 <>
-                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">
-                                        {plan.name}
-                                    </span>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">{plan.name}</span>
                                     <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                                 </>
                             ) : (
