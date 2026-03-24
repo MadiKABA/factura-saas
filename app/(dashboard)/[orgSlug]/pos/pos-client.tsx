@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useTransition, useCallback } from "react"
 import { createSaleAction } from "@/server/actions/sale.action"
 import { getProductByBarcodeAction } from "@/server/actions/product.action"
+import { Html5Qrcode } from "html5-qrcode"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Product = {
@@ -62,6 +63,13 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     const barcodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const searchRef = useRef<HTMLInputElement>(null)
 
+    const [flash, setFlash] = useState(false)
+
+    const scanLock = useRef(false)
+    const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
+
+    const beepRef = useRef<HTMLAudioElement | null>(null)
+
     const subtotal = cart.reduce((s, i) => s + i.price * i.quantity - i.discount, 0)
     const total = subtotal
     const cartCount = cart.reduce((s, i) => s + i.quantity, 0)
@@ -80,6 +88,17 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     const favorites = filtered.filter(p => p.isFavorite)
     const rest = filtered.filter(p => !p.isFavorite)
 
+    function triggerFeedback() {
+        setFlash(true)
+
+        if (beepRef.current) {
+            beepRef.current.currentTime = 0
+            beepRef.current.play().catch(() => { })
+        }
+
+        setTimeout(() => setFlash(false), 150)
+    }
+
     // ─── Lecteur USB ──────────────────────────────────────────────────────────
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
@@ -94,50 +113,112 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 barcodeTimer.current = setTimeout(() => { barcodeBuffer.current = "" }, 200)
             }
         }
+
+        beepRef.current = new Audio("/beep.wav")
         window.addEventListener("keydown", onKeyDown)
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
 
     // ─── Scan caméra ──────────────────────────────────────────────────────────
     async function startScan() {
-        setScanError(null); setScanMode(true)
+        setScanError(null)
+        setScanMode(true)
+
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            streamRef.current = stream
-            if (videoRef.current) videoRef.current.srcObject = stream
-            // @ts-ignore
             if ("BarcodeDetector" in window) {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                    },
+                })
+
+                streamRef.current = stream
+                if (videoRef.current) videoRef.current.srcObject = stream
+
                 // @ts-ignore
-                const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "qr_code", "code_128", "code_39"] })
+                const detector = new BarcodeDetector({
+                    formats: ["ean_13", "ean_8", "code_128", "code_39"],
+                })
+
                 const detect = async () => {
                     if (!videoRef.current) return
+
                     try {
                         const codes = await detector.detect(videoRef.current)
+
                         if (codes.length > 0) {
                             handleBarcodeDetected(codes[0].rawValue)
-                            // Pause courte puis reprend le scan
-                            setTimeout(() => requestAnimationFrame(detect), 800)
-                        } else requestAnimationFrame(detect)
-                    } catch { requestAnimationFrame(detect) }
+                            setTimeout(() => requestAnimationFrame(detect), 300)
+                        } else {
+                            requestAnimationFrame(detect)
+                        }
+                    } catch {
+                        requestAnimationFrame(detect)
+                    }
                 }
+
                 videoRef.current?.addEventListener("playing", detect, { once: true })
+
             } else {
-                setScanError("BarcodeDetector non supporté — Chrome Android requis.")
+                // 👉 fallback iOS
+                html5QrCodeRef.current = new Html5Qrcode("reader")
+
+                await html5QrCodeRef.current.start(
+                    { facingMode: "environment" },
+                    {
+                        fps: 10,
+                        qrbox: { width: 250, height: 120 },
+                    },
+                    (decodedText) => {
+                        handleBarcodeDetected(decodedText)
+                    },
+                    () => { }
+                )
             }
-        } catch { setScanError("Impossible d'accéder à la caméra."); setScanMode(false) }
+        } catch {
+            setScanError("Impossible d'accéder à la caméra.")
+            setScanMode(false)
+        }
     }
 
-    function stopScan() {
+    async function stopScan() {
         streamRef.current?.getTracks().forEach(t => t.stop())
-        streamRef.current = null; setScanMode(false)
+        streamRef.current = null
+
+        if (html5QrCodeRef.current) {
+            await html5QrCodeRef.current.stop()
+            html5QrCodeRef.current.clear()
+            html5QrCodeRef.current = null
+        }
+
+        setScanMode(false)
     }
 
     async function handleBarcodeDetected(barcode: string) {
+        if (scanLock.current) return
+        scanLock.current = true
+
+        triggerFeedback()
+
         const local = products.find(p => p.barcode === barcode)
-        if (local) { addToCart(local); return }
-        const result = await getProductByBarcodeAction(orgSlug, barcode)
-        if (result.success) addToCart(result.data as Product)
-        else { setScanError(`"${barcode}" introuvable`); setTimeout(() => setScanError(null), 3000) }
+
+        if (local) {
+            addToCart(local)
+        } else {
+            const result = await getProductByBarcodeAction(orgSlug, barcode)
+            if (result.success) {
+                addToCart(result.data as Product)
+            } else {
+                setScanError(`"${barcode}" introuvable`)
+                setTimeout(() => setScanError(null), 2000)
+            }
+        }
+
+        setTimeout(() => {
+            scanLock.current = false
+        }, 800)
     }
 
     // ─── Panier ────────────────────────────────────────────────────────────────
@@ -484,22 +565,46 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 >
                     {scanMode ? (
                         <>
-                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                            {"BarcodeDetector" in window ? (
+                                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                            ) : (
+                                <div id="reader" className="w-full h-full" />
+                            )}
+
+                            {/* Flash visuel */}
+                            {flash && (
+                                <div className="absolute inset-0 bg-green-400/30 animate-pulse pointer-events-none" />
+                            )}
+
                             {/* Viseur */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="w-48 h-24 relative">
-                                    <div className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-white rounded-tl-lg" />
-                                    <div className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-white rounded-tr-lg" />
-                                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-white rounded-bl-lg" />
-                                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-[3px] border-r-[3px] border-white rounded-br-lg" />
+                                    <div className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-white" />
+                                    <div className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-white" />
+                                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-white" />
+                                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-[3px] border-r-[3px] border-white" />
                                     <div className="absolute inset-x-4 top-1/2 h-0.5 bg-red-400 animate-pulse" />
                                 </div>
                             </div>
-                            <button onClick={stopScan}
-                                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-zinc-700/80 flex items-center justify-center text-white text-sm z-10">
+
+                            {/* Message UX */}
+                            <p className="absolute bottom-3 inset-x-4 text-center text-xs text-white bg-black/60 rounded-full py-1">
+                                Alignez le code-barres dans le cadre
+                            </p>
+
+                            {/* Erreur */}
+                            {scanError && (
+                                <p className="absolute bottom-10 inset-x-4 text-center text-xs text-red-400 bg-black/60 rounded-full py-1">
+                                    {scanError}
+                                </p>
+                            )}
+
+                            <button
+                                onClick={stopScan}
+                                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-zinc-700/80 text-white"
+                            >
                                 ✕
                             </button>
-                            {scanError && <p className="absolute bottom-2 inset-x-4 text-center text-xs text-red-400 bg-black/60 rounded-full py-1">{scanError}</p>}
                         </>
                     ) : (
                         <div className="flex items-center gap-2 px-3 h-full">

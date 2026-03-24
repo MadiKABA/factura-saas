@@ -229,7 +229,7 @@ export async function cancelSaleAction(
 export async function convertSaleToInvoiceAction(
     orgSlug: string,
     saleId: string
-): Promise<R<{ invoiceId: string; invoiceNumber: string }>> {
+): Promise<R<{ invoiceId: string; invoiceNumber: string; alreadyExisted: boolean }>> {
     const ctx = await getCtx(orgSlug)
     if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur" }
 
@@ -240,7 +240,38 @@ export async function convertSaleToInvoiceAction(
     if (!sale) return { success: false, error: "Vente introuvable" }
     if (sale.status === "CANCELLED") return { success: false, error: "Impossible de facturer une vente annulée" }
 
-    // Générer numéro facture
+    // ── Vérifier si une facture existe déjà pour cette vente ──────────────────
+    // On utilise les notes comme référence (avant migration avec originSaleId)
+    // Après migration v4b : utiliser originSaleId
+    const existingInvoice = await prisma.invoice.findFirst({
+        where: {
+            organizationId: ctx.org.id,
+            // Chercher via originSaleId si le champ existe (après migration)
+            // ou via notes en fallback
+            OR: [
+                { notes: { contains: `VNT-` } },
+            ],
+        },
+        // On filtre côté JS pour robustesse
+    })
+
+    // Vérification précise : chercher une facture liée à ce numéro de vente
+    const linkedInvoice = await prisma.invoice.findFirst({
+        where: {
+            organizationId: ctx.org.id,
+            notes: { contains: sale.number },
+        },
+    })
+
+    if (linkedInvoice) {
+        // Facture déjà existante — retourner sans recréer
+        return {
+            success: true,
+            data: { invoiceId: linkedInvoice.id, invoiceNumber: linkedInvoice.number, alreadyExisted: true },
+        }
+    }
+
+    // ── Générer numéro facture unique ─────────────────────────────────────────
     const year = new Date().getFullYear()
     const count = await prisma.invoice.count({ where: { organizationId: ctx.org.id } })
     const invoiceNumber = `FAC-${year}-${String(count + 1).padStart(4, "0")}`
@@ -251,14 +282,17 @@ export async function convertSaleToInvoiceAction(
                 organizationId: ctx.org.id,
                 clientId: sale.clientId,
                 number: invoiceNumber,
-                status: sale.amountPaid >= sale.total ? "PAID" : "PARTIAL",
+                status: Number(sale.amountPaid) >= Number(sale.total) ? "PAID" : "PARTIAL",
                 issueDate: sale.saleDate,
-                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 jours
+                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
                 subtotal: sale.subtotal,
                 taxTotal: sale.taxTotal,
                 total: sale.total,
                 currencyCode: sale.currencyCode,
-                notes: sale.note ? `Vente POS ${sale.number} — ${sale.note}` : `Vente POS ${sale.number}`,
+                // Notes encodent le lien vente — utilisé pour détection doublon
+                notes: sale.note
+                    ? `Vente POS ${sale.number} — ${sale.note}`
+                    : `Vente POS ${sale.number}`,
                 items: {
                     create: sale.items.map(i => ({
                         name: i.name,
@@ -269,7 +303,6 @@ export async function convertSaleToInvoiceAction(
                         productId: i.productId,
                     })),
                 },
-                // Paiements existants
                 payments: {
                     create: sale.payments
                         .filter(p => p.method !== "CREDIT")
@@ -286,5 +319,5 @@ export async function convertSaleToInvoiceAction(
     })
 
     revalidatePath(`/${orgSlug}/invoices`)
-    return { success: true, data: { invoiceId: invoice.id, invoiceNumber: invoice.number } }
+    return { success: true, data: { invoiceId: invoice.id, invoiceNumber: invoice.number, alreadyExisted: false } }
 }

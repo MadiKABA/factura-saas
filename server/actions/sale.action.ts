@@ -85,7 +85,7 @@ export async function createSaleAction(
     change: number
 }>> {
     const ctx = await getCtx(orgSlug)
-    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur d'authentification ou d'accès" }
+    if ("error" in ctx) return { success: false, error: ctx.error ?? "Erreur" }
     const { org } = ctx
 
     const parsed = createSaleSchema.safeParse(input)
@@ -175,14 +175,17 @@ export async function createSaleAction(
                 })),
             })
 
-            // 5. Créer les mouvements de stock OUT
+            // 5. Créer les mouvements de stock OUT (un mouvement par produit)
             for (const item of data.items) {
                 if (!item.productId) continue
                 const product = await tx.product.findUnique({
                     where: { id: item.productId },
-                    select: { isService: true },
+                    select: { isService: true, name: true },
                 })
                 if (product?.isService) continue
+
+                const unitCost = item.costPrice ?? null
+                const totalCost = unitCost ? unitCost * item.quantity : null
 
                 await tx.stockMovement.create({
                     data: {
@@ -191,9 +194,12 @@ export async function createSaleAction(
                         type: "OUT",
                         direction: -1,
                         quantity: item.quantity,
-                        unitCost: item.costPrice || null,
+                        unitCost,
+                        totalCost,
                         referenceType: "SALE",
                         referenceId: sale.id,
+                        note: `Vente ${number} — ${product?.name ?? item.name}`,
+                        movedAt: new Date(),
                     },
                 })
             }
