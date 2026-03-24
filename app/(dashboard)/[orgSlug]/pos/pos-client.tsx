@@ -119,9 +119,29 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
 
+    async function requestCameraPermission() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+            stream.getTracks().forEach(track => track.stop())
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // ─── Scan caméra ──────────────────────────────────────────────────────────
     async function startScan() {
         setScanError(null)
+        setScanMode(true)
+
+
+        const hasPermission = await requestCameraPermission()
+
+        if (!hasPermission) {
+            setScanError("Autorisez l'accès à la caméra (Safari requis sur iPhone)")
+            return
+        }
+
         setScanMode(true)
 
         try {
