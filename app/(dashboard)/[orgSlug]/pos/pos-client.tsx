@@ -55,6 +55,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     const [debtName, setDebtName] = useState("")
     const [debtPhone, setDebtPhone] = useState("")
     const [debtDue, setDebtDue] = useState("")
+    const [flash, setFlash] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
     const streamRef = useRef<MediaStream | null>(null)
@@ -106,31 +107,32 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
 
-    // ─── Son bip (AudioContext — fonctionne iOS + Android) ───────────────────
+    const beepAudioRef = useRef<HTMLAudioElement | null>(null)
+
+    useEffect(() => {
+        beepAudioRef.current = new Audio("/beep.mp3") // ton fichier
+    }, [])
+
     function playBeep() {
         try {
-            if (!audioCtxRef.current) {
-                audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+            if (beepAudioRef.current) {
+                beepAudioRef.current.currentTime = 0
+                beepAudioRef.current.play()
             }
-            const ctx = audioCtxRef.current
-            // Reprendre si suspendu (politique iOS)
-            if (ctx.state === "suspended") ctx.resume()
-
-            const osc = ctx.createOscillator()
-            const gain = ctx.createGain()
-            osc.connect(gain); gain.connect(ctx.destination)
-            osc.type = "square"
-            osc.frequency.setValueAtTime(1200, ctx.currentTime)
-            gain.gain.setValueAtTime(0.3, ctx.currentTime)
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12)
-            osc.start(ctx.currentTime)
-            osc.stop(ctx.currentTime + 0.12)
         } catch { }
     }
 
     // ─── Scan caméra — corrigé pour iOS + Android ─────────────────────────────
-    // Problème clé : setScanMode(true) re-render AVANT que la video soit dans le DOM.
-    // Solution : setter le stream dans un useEffect qui surveille scanMode + videoRef.
+    function triggerScanFeedback() {
+        playBeep()
+
+        // vibration
+        navigator.vibrate?.(40)
+
+        // flash écran
+        setFlash(true)
+        setTimeout(() => setFlash(false), 120)
+    }
     const pendingStreamRef = useRef<MediaStream | null>(null)
 
     async function startScan() {
@@ -167,6 +169,13 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         video.srcObject = pendingStreamRef.current
         // iOS nécessite play() explicite après srcObject
         video.play().catch(() => { })
+        const track = pendingStreamRef.current?.getVideoTracks?.()[0]
+
+        if (track && "applyConstraints" in track) {
+            track.applyConstraints({
+                advanced: [{ focusMode: "continuous" } as any]
+            }).catch(() => { })
+        }
         pendingStreamRef.current = null
     }, [scanMode])
 
@@ -201,45 +210,55 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 }
                 requestAnimationFrame(loop)
             } else {
-                // ── Chemin B : jsQR fallback (iOS Safari, navigateurs sans BarcodeDetector) ──
+                // ── Chemin B : jsQR fallback (iOS Safari, navigateurs sans 
                 const canvas = document.createElement("canvas")
                 const ctx2d = canvas.getContext("2d", { willReadFrequently: true })
 
                 const loop = () => {
                     if (!detectLoopRef.current || !videoRef.current || !ctx2d) return
+
+                    const video = videoRef.current
+
                     if (video.readyState >= 2 && video.videoWidth > 0) {
-                        canvas.width = video.videoWidth
-                        canvas.height = video.videoHeight
-                        ctx2d.drawImage(video, 0, 0)
+                        const vw = video.videoWidth
+                        const vh = video.videoHeight
+
+                        // 🔥 Zone centrale (beaucoup + rapide pour iOS)
+                        const scanW = vw * 0.6
+                        const scanH = vh * 0.3
+                        const sx = (vw - scanW) / 2
+                        const sy = (vh - scanH) / 2
+
+                        canvas.width = scanW
+                        canvas.height = scanH
+
+                        ctx2d.drawImage(video, sx, sy, scanW, scanH, 0, 0, scanW, scanH)
+
                         try {
                             const imageData = ctx2d.getImageData(0, 0, canvas.width, canvas.height)
-                            // @ts-ignore — jsQR chargé dynamiquement
                             const jsQR = (window as any).jsQR
+
                             if (jsQR) {
                                 const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                                    inversionAttempts: "dontInvert",
+                                    inversionAttempts: "attemptBoth",
                                 })
-                                if (code && code.data && code.data !== lastScannedRef.current) {
+
+                                if (code?.data && code.data !== lastScannedRef.current) {
                                     lastScannedRef.current = code.data
-                                    playBeep()
+
+                                    triggerScanFeedback() // 👈 IMPORTANT (flash + beep)
+
                                     handleBarcodeRef.current(code.data)
-                                    setTimeout(() => { lastScannedRef.current = "" }, 1500)
+
+                                    setTimeout(() => { lastScannedRef.current = "" }, 1200)
                                 }
                             }
                         } catch { }
                     }
-                    if (detectLoopRef.current) setTimeout(() => requestAnimationFrame(loop), 150)
-                }
 
-                // Charger jsQR dynamiquement si pas déjà là
-                if (!(window as any).jsQR) {
-                    const script = document.createElement("script")
-                    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"
-                    script.onload = () => requestAnimationFrame(loop)
-                    script.onerror = () => setScanError("Bibliothèque de scan introuvable. Vérifiez la connexion.")
-                    document.head.appendChild(script)
-                } else {
-                    requestAnimationFrame(loop)
+                    if (detectLoopRef.current) {
+                        requestAnimationFrame(loop)
+                    }
                 }
             }
         }
@@ -626,6 +645,9 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                                 className="w-full h-full object-cover"
                                 style={{ display: scanMode ? "block" : "none" }}
                             />
+                            {flash && (
+                                <div className="absolute inset-0 bg-white/80 z-30 pointer-events-none animate-pulse" />
+                            )}
 
                             {/* Overlay viseur */}
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
