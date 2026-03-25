@@ -17,7 +17,7 @@ export default async function OrgLayout({ children, params }: { children: React.
                     <OrgTopbar />
 
                     {/* On ajoute pb-20 sur mobile pour laisser la place au MobileNav */}
-                    <div className="flex-1 overflow-y-auto p-2 md:p-4 pb-32 md:pb-4">
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0 pb-28">
                         {children}
                     </div>
                 </main>

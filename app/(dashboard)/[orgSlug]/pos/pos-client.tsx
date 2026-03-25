@@ -110,7 +110,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     const beepAudioRef = useRef<HTMLAudioElement | null>(null)
 
     useEffect(() => {
-        beepAudioRef.current = new Audio("/beep.mp3") // ton fichier
+        beepAudioRef.current = new Audio("/beep.wav") // ton fichier
     }, [])
 
     function playBeep() {
@@ -408,8 +408,13 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCheckoutOpen(false)} />
 
             {/* Sheet */}
-            <div className="relative z-10 w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-                style={{ maxHeight: "92vh" }}>
+            <div
+                className="relative z-10 w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+                style={{
+                    maxHeight: "92vh",
+                    paddingBottom: "env(safe-area-inset-bottom)" // iOS safe area
+                }}
+            >
 
                 {/* Handle mobile */}
                 <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
@@ -564,7 +569,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 </div>
 
                 {/* Bouton confirmer */}
-                <div className="shrink-0 px-5 py-4 border-t border-zinc-100">
+                <div className="shrink-0 px-5 py-4 border-t border-zinc-100 bg-white pb-6">
                     <button onClick={handleConfirmSale} disabled={isPending || cart.length === 0}
                         className="w-full rounded-2xl bg-emerald-500 py-4 text-white font-black text-lg active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                         {isPending ? "Enregistrement…" : `✓ Encaisser ${fmt(total, org.currency)}`}
