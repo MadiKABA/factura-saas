@@ -55,7 +55,6 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     const [debtName, setDebtName] = useState("")
     const [debtPhone, setDebtPhone] = useState("")
     const [debtDue, setDebtDue] = useState("")
-    const [flash, setFlash] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
     const streamRef = useRef<MediaStream | null>(null)
@@ -107,32 +106,31 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         return () => window.removeEventListener("keydown", onKeyDown)
     }, [])
 
-    const beepAudioRef = useRef<HTMLAudioElement | null>(null)
-
-    useEffect(() => {
-        beepAudioRef.current = new Audio("/beep.wav") // ton fichier
-    }, [])
-
+    // ─── Son bip (AudioContext — fonctionne iOS + Android) ───────────────────
     function playBeep() {
         try {
-            if (beepAudioRef.current) {
-                beepAudioRef.current.currentTime = 0
-                beepAudioRef.current.play()
+            if (!audioCtxRef.current) {
+                audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
             }
+            const ctx = audioCtxRef.current
+            // Reprendre si suspendu (politique iOS)
+            if (ctx.state === "suspended") ctx.resume()
+
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.connect(gain); gain.connect(ctx.destination)
+            osc.type = "square"
+            osc.frequency.setValueAtTime(1200, ctx.currentTime)
+            gain.gain.setValueAtTime(0.3, ctx.currentTime)
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12)
+            osc.start(ctx.currentTime)
+            osc.stop(ctx.currentTime + 0.12)
         } catch { }
     }
 
     // ─── Scan caméra — corrigé pour iOS + Android ─────────────────────────────
-    function triggerScanFeedback() {
-        playBeep()
-
-        // vibration
-        navigator.vibrate?.(40)
-
-        // flash écran
-        setFlash(true)
-        setTimeout(() => setFlash(false), 120)
-    }
+    // Problème clé : setScanMode(true) re-render AVANT que la video soit dans le DOM.
+    // Solution : setter le stream dans un useEffect qui surveille scanMode + videoRef.
     const pendingStreamRef = useRef<MediaStream | null>(null)
 
     async function startScan() {
@@ -162,21 +160,29 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         }
     }
 
-    // Attacher le stream à la video dès que scanMode=true et videoRef disponible
+    // Attacher le stream + lancer la video (iOS + Android)
     useEffect(() => {
         if (!scanMode || !videoRef.current || !pendingStreamRef.current) return
         const video = videoRef.current
-        video.srcObject = pendingStreamRef.current
-        // iOS nécessite play() explicite après srcObject
-        video.play().catch(() => { })
-        const track = pendingStreamRef.current?.getVideoTracks?.()[0]
-
-        if (track && "applyConstraints" in track) {
-            track.applyConstraints({
-                advanced: [{ focusMode: "continuous" } as any]
-            }).catch(() => { })
-        }
+        const stream = pendingStreamRef.current
         pendingStreamRef.current = null
+
+        video.srcObject = stream
+
+        // play() avec retry — iOS peut échouer la première fois (politique autoplay)
+        const tryPlay = () => {
+            video.play().catch(err => {
+                if (err.name !== "AbortError") return // AbortError = play() annulé par stop() → ignorer
+                setTimeout(() => video.play().catch(() => { }), 250)
+            })
+        }
+        tryPlay()
+
+        // Autofocus continu si dispo (Android Chrome — iOS l'ignore silencieusement)
+        const track = stream.getVideoTracks()[0]
+        if (track) {
+            track.applyConstraints({ advanced: [{ focusMode: "continuous" } as any] }).catch(() => { })
+        }
     }, [scanMode])
 
     // Démarrer la boucle de détection quand la vidéo joue
@@ -210,55 +216,59 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 }
                 requestAnimationFrame(loop)
             } else {
-                // ── Chemin B : jsQR fallback (iOS Safari, navigateurs sans 
+                // ── Chemin B : jsQR fallback (iOS Safari + tout navigateur sans BarcodeDetector) ──
+                // Canvas fixe 400×250 pour perf iOS — on scale la vidéo dedans
+                const SCAN_W = 400
+                const SCAN_H = 250
                 const canvas = document.createElement("canvas")
+                canvas.width = SCAN_W
+                canvas.height = SCAN_H
                 const ctx2d = canvas.getContext("2d", { willReadFrequently: true })
 
+                // Référence stable à la video pour le closure
+                const videoEl = videoRef.current
+
                 const loop = () => {
-                    if (!detectLoopRef.current || !videoRef.current || !ctx2d) return
+                    // Stopper si désactivé ou video disparue
+                    if (!detectLoopRef.current || !videoEl || !ctx2d) return
 
-                    const video = videoRef.current
-
-                    if (video.readyState >= 2 && video.videoWidth > 0) {
-                        const vw = video.videoWidth
-                        const vh = video.videoHeight
-
-                        // 🔥 Zone centrale (beaucoup + rapide pour iOS)
-                        const scanW = vw * 0.6
-                        const scanH = vh * 0.3
-                        const sx = (vw - scanW) / 2
-                        const sy = (vh - scanH) / 2
-
-                        canvas.width = scanW
-                        canvas.height = scanH
-
-                        ctx2d.drawImage(video, sx, sy, scanW, scanH, 0, 0, scanW, scanH)
-
-                        try {
-                            const imageData = ctx2d.getImageData(0, 0, canvas.width, canvas.height)
+                    try {
+                        if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && !videoEl.paused) {
+                            // Dessiner frame vidéo dans le canvas (scale auto)
+                            ctx2d.drawImage(videoEl, 0, 0, SCAN_W, SCAN_H)
+                            const imageData = ctx2d.getImageData(0, 0, SCAN_W, SCAN_H)
                             const jsQR = (window as any).jsQR
 
                             if (jsQR) {
-                                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                                    inversionAttempts: "attemptBoth",
+                                const code = jsQR(imageData.data, SCAN_W, SCAN_H, {
+                                    inversionAttempts: "attemptBoth", // meilleur taux sur iOS
                                 })
-
                                 if (code?.data && code.data !== lastScannedRef.current) {
                                     lastScannedRef.current = code.data
-
-                                    triggerScanFeedback() // 👈 IMPORTANT (flash + beep)
-
+                                    playBeep()
+                                    navigator.vibrate?.(40)
                                     handleBarcodeRef.current(code.data)
-
                                     setTimeout(() => { lastScannedRef.current = "" }, 1200)
                                 }
                             }
-                        } catch { }
-                    }
+                        }
+                    } catch { /* ignorer les erreurs frame */ }
 
+                    // Reprogrammer la prochaine frame (200ms sur iOS pour économiser la batterie)
                     if (detectLoopRef.current) {
-                        requestAnimationFrame(loop)
+                        setTimeout(() => { if (detectLoopRef.current) requestAnimationFrame(loop) }, 200)
                     }
+                }
+
+                // Charger jsQR si absent, sinon démarrer directement
+                if (!(window as any).jsQR) {
+                    const script = document.createElement("script")
+                    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"
+                    script.onload = () => { if (detectLoopRef.current) requestAnimationFrame(loop) }
+                    script.onerror = () => setScanError("jsQR introuvable — vérifiez la connexion réseau.")
+                    document.head.appendChild(script)
+                } else {
+                    requestAnimationFrame(loop)
                 }
             }
         }
@@ -281,7 +291,6 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
         streamRef.current = null
         setScanMode(false)
     }
-
     // ─── Panier ────────────────────────────────────────────────────────────────
     const addToCart = useCallback((p: Product) => {
         if (!p.isService && p.currentStock <= 0) {
@@ -306,6 +315,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     // Ref stable pour accès dans les useEffects sans stale closure
     const handleBarcodeRef = useRef(handleBarcodeDetected)
     useEffect(() => { handleBarcodeRef.current = handleBarcodeDetected }, [handleBarcodeDetected])
+
 
     function updateQty(index: number, delta: number) {
         setCart(prev => {
@@ -408,13 +418,8 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCheckoutOpen(false)} />
 
             {/* Sheet */}
-            <div
-                className="relative z-10 w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-                style={{
-                    maxHeight: "92vh",
-                    paddingBottom: "env(safe-area-inset-bottom)" // iOS safe area
-                }}
-            >
+            <div className="relative z-10 w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+                style={{ maxHeight: "92vh" }}>
 
                 {/* Handle mobile */}
                 <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
@@ -569,7 +574,7 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                 </div>
 
                 {/* Bouton confirmer */}
-                <div className="shrink-0 px-5 py-4 border-t border-zinc-100 bg-white pb-6">
+                <div className="shrink-0 px-5 py-4 border-t border-zinc-100">
                     <button onClick={handleConfirmSale} disabled={isPending || cart.length === 0}
                         className="w-full rounded-2xl bg-emerald-500 py-4 text-white font-black text-lg active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                         {isPending ? "Enregistrement…" : `✓ Encaisser ${fmt(total, org.currency)}`}
@@ -626,15 +631,23 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
     // LAYOUT PRINCIPAL
     // ═══════════════════════════════════════════════════════════════════════════
     return (
-        <div className="flex h-screen overflow-hidden bg-zinc-50">
+        <div className="flex overflow-hidden bg-zinc-50" style={{ height: "100dvh" }}>
 
             {/* Modal encaissement */}
             {CheckoutSheet}
 
             {/* ════════════════════════════════════════════════
-          MOBILE — wireframe : scanner | panier | grille | boutons
+          MOBILE — fixed pour sortir du pb-28 du layout parent
+          Le POS doit être plein écran, MobileNav est au-dessus via z-index
       ════════════════════════════════════════════════ */}
-            <div className="flex flex-col w-full lg:hidden h-screen overflow-hidden">
+            <div className="flex flex-col w-full lg:hidden overflow-hidden"
+                style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 5,
+                    // Respecter la safe area iOS (encoche + barre home)
+                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                }}>
 
                 {/* 1. Barre scanner / recherche */}
                 <div
@@ -650,9 +663,6 @@ export default function POSClient({ orgSlug, org, products, categories, activeCa
                                 className="w-full h-full object-cover"
                                 style={{ display: scanMode ? "block" : "none" }}
                             />
-                            {flash && (
-                                <div className="absolute inset-0 bg-white/80 z-30 pointer-events-none animate-pulse" />
-                            )}
 
                             {/* Overlay viseur */}
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
