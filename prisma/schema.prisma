@@ -135,22 +135,24 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships       Membership[]
-  invoices          Invoice[]
-  quotes            Quote[]
-  expenses          Expense[]
-  clients           Client[]
-  vendors           Vendor[]
-  expenseCategories ExpenseCategory[]
-  productCategories ProductCategory[]
-  products          Product[]
-  taxRates          TaxRate[]
-  subscription      Subscription?
-  sales             Sale[]
-  cashSessions      CashSession[]
-  stockMovements    StockMovement[]
-  inventories       Inventory[]
-  debts             Debt[]
+  memberships          Membership[]
+  invoices             Invoice[]
+  quotes               Quote[]
+  expenses             Expense[]
+  clients              Client[]
+  vendors              Vendor[]
+  expenseCategories    ExpenseCategory[]
+  productCategories    ProductCategory[]
+  products             Product[]
+  taxRates             TaxRate[]
+  subscription         Subscription?
+  sales                Sale[]
+  cashSessions         CashSession[]
+  stockMovements       StockMovement[]
+  inventories          Inventory[]
+  debts                Debt[]
+  subscriptionInvoices SubscriptionInvoice[]
+  subscriptionUsages   SubscriptionUsage[]
 }
 
 model Membership {
@@ -169,39 +171,56 @@ model Membership {
   @@index([organizationId])
 }
 
-// ============================================================
-// PLANS & ABONNEMENTS
-// ============================================================
-
-enum PlanType {
-  FREE
-  STARTER
-  PRO
-  BUSINESS
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  PAST_DUE
-  CANCELED
-  TRIALING
-}
-
 model Plan {
-  id           String   @id @default(uuid())
-  name         PlanType @unique
-  priceMonthly Decimal  @db.Decimal(10, 2)
-  priceYearly  Decimal  @db.Decimal(10, 2)
+  id   String   @id @default(uuid())
+  name PlanType @unique
 
-  maxInvoices Int?
-  maxExpenses Int?
-  maxUsers    Int?
-  maxProducts Int?
-  maxSales    Int? // limite ventes/mois plan commerce
+  // Tarifs
+  priceMonthlyXof Decimal @default(0) @db.Decimal(10, 2)
+  priceYearlyXof  Decimal @default(0) @db.Decimal(10, 2)
+
+  // Limites métier (null = illimité)
+  maxProducts             Int? // produits actifs simultanés
+  maxSalesPerMonth        Int? // ventes par mois civile
+  maxInvoicesPerMonth     Int? // factures par mois
+  maxStockBatchesPerMonth Int? // bons stock par mois
+  maxUsers                Int? // membres dans l'org
+
+  // Accès modules (feature flags)
+  hasStockModule     Boolean @default(false)
+  hasReportsModule   Boolean @default(false)
+  hasMultiUserModule Boolean @default(true)
+  hasApiAccess       Boolean @default(false)
+  hasPrioritySupport Boolean @default(false)
+
+  // Meta
+  isActive     Boolean @default(true) // plan encore proposé
+  displayOrder Int     @default(0)
+  description  String? // texte marketing
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   subscriptions Subscription[]
+  invoices      SubscriptionInvoice[]
+}
+
+// ============================================================
+// SUBSCRIPTION — abonnement d'une organisation
+// ============================================================
+
+enum SubscriptionStatus {
+  TRIALING // essai gratuit
+  ACTIVE // abonnement actif
+  PAST_DUE // paiement en retard (grace period)
+  SUSPENDED // suspendu manuellement par admin
+  CANCELED // annulé (reste actif jusqu'à currentPeriodEnd)
+  EXPIRED // période terminée, pas renouvelé
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
 }
 
 model Subscription {
@@ -209,16 +228,132 @@ model Subscription {
   organizationId String @unique
   planId         String
 
-  status            SubscriptionStatus
-  currentPeriodEnd  DateTime
-  cancelAtPeriodEnd Boolean            @default(false)
-  externalId        String?
+  status       SubscriptionStatus @default(TRIALING)
+  billingCycle BillingCycle       @default(MONTHLY)
+
+  // Dates
+  trialEndsAt        DateTime? // fin de l'essai gratuit
+  currentPeriodStart DateTime  @default(now())
+  currentPeriodEnd   DateTime // prochaine échéance
+  canceledAt         DateTime? // quand l'org a annulé
+  cancelAtPeriodEnd  Boolean   @default(false)
+
+  // Activation manuelle (admin)
+  activatedAt     DateTime? // quand un admin a activé
+  activatedByNote String? // note de l'admin
+
+  // Meta PayDunya
+  paydunyaCustomerId String? // référence client chez PayDunya si disponible
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan                  @relation(fields: [planId], references: [id])
+  invoices     SubscriptionInvoice[]
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+// ============================================================
+// SUBSCRIPTION INVOICE — factures d'abonnement
+// ============================================================
+
+enum SubscriptionInvoiceStatus {
+  PENDING // créée, en attente de paiement
+  PROCESSING // checkout PayDunya ouvert
+  PAID // paiement confirmé
+  FAILED // échec paiement
+  CANCELED // annulée
+  REFUNDED // remboursée
+}
+
+model SubscriptionInvoice {
+  id             String @id @default(uuid())
+  organizationId String
+  planId         String
+  subscriptionId String
+
+  // Montant
+  amountXof    Decimal      @db.Decimal(10, 2)
+  billingCycle BillingCycle
+  periodStart  DateTime
+  periodEnd    DateTime
+
+  status SubscriptionInvoiceStatus @default(PENDING)
+
+  // PayDunya
+  paydunyaToken       String? @unique // token invoice PayDunya
+  paydunyaCheckoutUrl String? // URL de paiement
+  paydunyaReference   String? // référence de transaction PayDunya
+  paydunyaReceiptUrl  String? // URL reçu PayDunya
+
+  // Confirmation
+  paidAt        DateTime?
+  paymentMethod String? // "orange-money-senegal", "free-money", "wave", etc.
+  payerPhone    String?
+
+  // Activation manuelle (admin bypass)
+  manuallyActivatedAt   DateTime?
+  manuallyActivatedById String? // userId de l'admin
+
+  // Retry
+  attemptCount  Int       @default(0)
+  lastAttemptAt DateTime?
+  failureReason String?
+
+  // Webhook
+  ipnReceivedAt DateTime? // quand l'IPN a été reçu
+  ipnPayload    Json? // payload brut de l'IPN (debug)
+
+  notes String? // note admin libre
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan         Plan         @relation(fields: [planId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([paydunyaToken])
+  @@index([organizationId, status])
+}
+
+// ============================================================
+// SUBSCRIPTION USAGE — snapshot mensuel de l'utilisation
+// Calculé chaque début de mois pour les rapports et le billing
+// ============================================================
+
+model SubscriptionUsage {
+  id             String @id @default(uuid())
+  organizationId String
+
+  month Int // ex: 1..12
+  year  Int // ex: 2025
+
+  // Métriques
+  salesCount        Int @default(0)
+  invoicesCount     Int @default(0)
+  stockBatchesCount Int @default(0)
+  activeProducts    Int @default(0)
+  membersCount      Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId])
+}
+
+enum PlanType {
+  FREE
+  STARTER
+  PRO
+  BUSINESS
 }
 
 // ============================================================

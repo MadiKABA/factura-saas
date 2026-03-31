@@ -68,7 +68,7 @@ async function checkInvoiceLimit(organizationId: string): Promise<{ allowed: boo
     const plan = subscription.plan
 
     // Plan sans limite sur les factures → OK
-    if (plan.maxInvoices === null) return { allowed: true }
+    if (plan.maxInvoicesPerMonth === null) return { allowed: true }
 
     // Compter les factures non-annulées de l'org
     const count = await prisma.invoice.count({
@@ -78,10 +78,10 @@ async function checkInvoiceLimit(organizationId: string): Promise<{ allowed: boo
         },
     })
 
-    if (count >= plan.maxInvoices) {
+    if (count >= plan.maxInvoicesPerMonth) {
         return {
             allowed: false,
-            reason: `Ton plan ${plan.name} est limité à ${plan.maxInvoices} factures. Passe à un plan supérieur pour continuer.`,
+            reason: `Ton plan ${plan.name} est limité à ${plan.maxInvoicesPerMonth} factures. Passe à un plan supérieur pour continuer.`,
         }
     }
 
@@ -302,7 +302,7 @@ export async function getInvoiceFormDataAction(orgSlug: string): Promise<
                 total: Number(q.total),
             })),
             canCreate: limitCheck.allowed,
-            planLimit: subscription?.plan.maxInvoices ?? null,
+            planLimit: subscription?.plan.maxInvoicesPerMonth ?? null,
             currentCount: invoiceCount,
         },
     }
