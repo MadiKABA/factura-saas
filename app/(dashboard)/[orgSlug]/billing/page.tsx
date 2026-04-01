@@ -3,9 +3,7 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { auth } from "@/server/auth"
 import { prisma } from "@/server/db"
-import dynamic from "next/dynamic"
-
-const BillingWrapper = dynamic(() => import("./billing-wrapper"), { ssr: false })
+import BillingWrapper from "./billing-wrapper" // ✅ FIX
 
 export default async function BillingPage({
     params,
@@ -29,7 +27,6 @@ export default async function BillingPage({
     if (!membership || !["OWNER", "ADMIN"].includes(membership.role))
         redirect(`/${orgSlug}`)
 
-    // Charger plans + abonnement en parallèle
     const [plansRaw, subRaw] = await Promise.all([
         prisma.plan.findMany({
             where: { isActive: true },

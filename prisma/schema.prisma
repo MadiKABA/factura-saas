@@ -44,6 +44,7 @@ model User {
   accounts     Account[]
   memberships  Membership[]
   cashSessions CashSession[]
+  adminUser    AdminUser?
 }
 
 model Session {
@@ -153,6 +154,7 @@ model Organization {
   debts                Debt[]
   subscriptionInvoices SubscriptionInvoice[]
   subscriptionUsages   SubscriptionUsage[]
+  stockBatches         StockBatch[]
 }
 
 model Membership {
@@ -442,12 +444,13 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoiceItems   InvoiceItem[]
-  quoteItems     QuoteItem[]
-  saleItems      SaleItem[]
-  stockMovements StockMovement[]
-  inventoryItems InventoryItem[]
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceItems    InvoiceItem[]
+  quoteItems      QuoteItem[]
+  saleItems       SaleItem[]
+  stockMovements  StockMovement[]
+  inventoryItems  InventoryItem[]
+  stockBatchItems StockBatchItem[]
 
   // SKU unique par organisation (si renseigné)
   @@unique([organizationId, sku])
@@ -516,6 +519,7 @@ model Vendor {
   expenses       Expense[]
   stockMovements StockMovement[]
   debts          Debt[]
+  stockBatches   StockBatch[]
 
   @@index([organizationId])
 }
@@ -786,48 +790,152 @@ model SalePayment {
 }
 
 // ============================================================
-// STOCK
+// ADMIN — Superadmins plateforme (non liés à une org)
+// ============================================================
+
+model AdminUser {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  canManagePlans Boolean @default(true)
+  canManageOrgs  Boolean @default(true)
+  canManageSubs  Boolean @default(true)
+  note           String? // "Fondateur", "Support technique"
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Sur model User ajouter :
+//   adminUser AdminUser?
+
+// ============================================================
+// STOCK BATCH — Bon de mouvement multi-produits
+// ============================================================
+
+enum StockBatchType {
+  RECEPTION // entrée fournisseur
+  OUTPUT // sortie manuelle (perte, casse, don, péremption)
+}
+
+enum StockBatchStatus {
+  DRAFT // en saisie — stock inchangé
+  VALIDATED // validé — StockMovements créés + currentStock mis à jour
+  CANCELLED // annulé — aucun impact stock
+}
+
+enum StockOutputReason {
+  EXPIRED // produits périmés
+  DAMAGED // abîmés / cassés
+  LOSS // perte générale
+  THEFT // vol
+  DONATION // don / cadeau
+  OTHER // autre
+}
+
+model StockBatch {
+  id             String @id @default(uuid())
+  organizationId String
+
+  type   StockBatchType
+  status StockBatchStatus @default(DRAFT)
+  number String // REC-2025-0001 | OUT-2025-0001
+
+  vendorId     String?
+  outputReason StockOutputReason?
+  externalRef  String? // N° BL fournisseur
+  note         String?
+
+  batchDate   DateTime  @default(now())
+  validatedAt DateTime?
+  totalCost   Decimal?  @db.Decimal(18, 2) // calculé à la validation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vendor       Vendor?          @relation(fields: [vendorId], references: [id])
+  items        StockBatchItem[]
+  movements    StockMovement[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@index([organizationId, batchDate])
+  @@index([vendorId])
+}
+
+model StockBatchItem {
+  id           String @id @default(uuid())
+  stockBatchId String
+  productId    String
+
+  quantity  Decimal  @db.Decimal(18, 2)
+  unitCost  Decimal? @db.Decimal(18, 2)
+  totalCost Decimal? @db.Decimal(18, 2)
+
+  batchNumber String? // N° de lot fabricant
+  expiryDate  DateTime?
+  note        String?
+
+  stockBatch StockBatch @relation(fields: [stockBatchId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@index([stockBatchId])
+  @@index([productId])
+}
+
+// ============================================================
+// STOCK MOVEMENT — Trace atomique par produit
+// Créé automatiquement à la validation d'un batch,
+// ou lors d'une vente (OUT) ou d'un inventaire (ADJUSTMENT)
 // ============================================================
 
 enum StockMovementType {
-  IN // entrée : achat fournisseur, retour client
+  IN // entrée : réception, retour client
   OUT // sortie : vente, don
-  ADJUSTMENT // ajustement inventaire
-  LOSS // perte, casse, vol
+  ADJUSTMENT // ajustement inventaire (±)
+  LOSS // perte, casse, vol, péremption
   TRANSFER // transfert entre sites (futur)
 }
 
+// AMÉLIORATION vs modèle fourni :
+//   + stockBatchId — lien vers le bon source
+//   La quantité reste toujours positive ; direction (+1 / -1) porte le sens
 model StockMovement {
   id             String  @id @default(uuid())
   organizationId String
   productId      String
   vendorId       String?
+  stockBatchId   String? // null si mouvement issu d'une vente ou inventaire
 
   type      StockMovementType
   quantity  Decimal           @db.Decimal(18, 2) // toujours positif
-  direction Int               @default(1) // +1 entrée / -1 sortie
+  direction Int               @default(1) // +1 entrée  /  -1 sortie
 
   unitCost  Decimal? @db.Decimal(18, 2)
   totalCost Decimal? @db.Decimal(18, 2)
 
-  // Référence source
-  referenceType String? // "SALE", "INVOICE", "INVENTORY", "MANUAL", "RECEPTION"
+  referenceType String? // "SALE" | "BATCH" | "INVENTORY" | "MANUAL" | "SALE_CANCEL"
   referenceId   String?
 
-  // Lot (pharmacie, alimentation)
   batchNumber String?
   expiryDate  DateTime?
+  note        String?
 
-  note      String?
   movedAt   DateTime @default(now())
   createdAt DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product      @relation(fields: [productId], references: [id])
   vendor       Vendor?      @relation(fields: [vendorId], references: [id])
+  stockBatch   StockBatch?  @relation(fields: [stockBatchId], references: [id])
 
   @@index([organizationId])
   @@index([productId])
+  @@index([stockBatchId])
   @@index([organizationId, movedAt])
   @@index([referenceType, referenceId])
 }
@@ -838,7 +946,7 @@ model StockMovement {
 
 enum InventoryStatus {
   DRAFT // en cours de comptage
-  VALIDATED // validé — ajustements appliqués
+  VALIDATED // ajustements appliqués
   CANCELLED
 }
 
@@ -846,18 +954,19 @@ model Inventory {
   id             String @id @default(uuid())
   organizationId String
 
-  name      String
-  status    InventoryStatus @default(DRAFT)
-  startedAt DateTime        @default(now())
-  closedAt  DateTime?
-  note      String?
+  name   String
+  status InventoryStatus @default(DRAFT)
+  note   String?
 
-  createdAt DateTime @default(now())
+  startedAt DateTime  @default(now())
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   items        InventoryItem[]
 
   @@index([organizationId])
+  @@index([organizationId, status])
 }
 
 model InventoryItem {
@@ -865,8 +974,8 @@ model InventoryItem {
   inventoryId String
   productId   String
 
-  expectedQty Decimal @db.Decimal(18, 2) // stock théorique
-  countedQty  Decimal @db.Decimal(18, 2) // stock réel compté
+  expectedQty Decimal @db.Decimal(18, 2) // snapshot stock théorique
+  countedQty  Decimal @db.Decimal(18, 2) // compté physiquement
   variance    Decimal @db.Decimal(18, 2) // countedQty - expectedQty
 
   note String?
@@ -876,6 +985,7 @@ model InventoryItem {
 
   @@unique([inventoryId, productId])
   @@index([inventoryId])
+  @@index([productId])
 }
 
 // ============================================================
