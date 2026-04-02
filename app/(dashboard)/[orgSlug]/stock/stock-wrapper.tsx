@@ -1,4 +1,3 @@
-// src/app/(dashboard)/[orgSlug]/stock/stock-wrapper.tsx
 "use client"
 import dynamic from "next/dynamic"
 import type { ComponentProps } from "react"
@@ -16,6 +15,7 @@ const StockClient = dynamic(() => import("./stock-client"), {
 })
 
 type Props = ComponentProps<typeof StockClient>
+
 export default function StockWrapper(props: Props) {
     return <StockClient {...props} />
 }

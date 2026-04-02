@@ -5,8 +5,7 @@ import { auth } from "@/server/auth"
 import { prisma } from "@/server/db"
 import dynamic from "next/dynamic"
 import { getOrgPlan, PLAN_LIMITS } from "@/lib/plan-limits"
-
-const StockWrapper = dynamic(() => import("./stock-wrapper"), { ssr: false })
+import StockWrapper from "./stock-wrapper"
 
 export default async function StockPage({
     params,
